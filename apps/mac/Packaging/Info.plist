@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>CFBundleIdentifier</key>
+    <string>com.pami.mac</string>
+    <key>CFBundleName</key>
+    <string>PamiMac</string>
+    <key>CFBundleDisplayName</key>
+    <string>PAMI</string>
+    <key>CFBundleExecutable</key>
+    <string>PamiMac</string>
+    <key>CFBundlePackageType</key>
+    <string>APPL</string>
+    <key>CFBundleShortVersionString</key>
+    <string>0.1.0</string>
+    <key>CFBundleVersion</key>
+    <string>1</string>
+    <key>LSMinimumSystemVersion</key>
+    <string>13.0</string>
+    <key>LSUIElement</key>
+    <true/>
+    <key>NSHumanReadableCopyright</key>
+    <string>Personal use only.</string>
+    <key>NSMicrophoneUsageDescription</key>
+    <string>PAMI uses your microphone to capture voice requests when you click Voice Mode.</string>
+    <key>NSSpeechRecognitionUsageDescription</key>
+    <string>PAMI transcribes your voice requests locally to turn them into tasks.</string>
+</dict>
+</plist>
