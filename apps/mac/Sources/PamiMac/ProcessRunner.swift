@@ -18,6 +18,21 @@ enum ProcessRunner {
         let message: String
     }
 
+    // Set from `onCancel` below, read back on the GCD thread once the
+    // process actually exits, so a cancellation-triggered terminate() is
+    // reported as CancellationError rather than a misleading nonzero-exit
+    // ExecutionError — callers (HeartbeatLoop) tell "you cancelled this"
+    // apart from "this genuinely failed" by catching CancellationError
+    // specifically. Task.isCancelled itself isn't readable from inside the
+    // plain DispatchQueue.global closure below (no Task context there), so
+    // this lock-protected flag is the bridge.
+    private final class CancelFlag: @unchecked Sendable {
+        private let lock = NSLock()
+        private var value = false
+        func set() { lock.lock(); value = true; lock.unlock() }
+        func get() -> Bool { lock.lock(); defer { lock.unlock() }; return value }
+    }
+
     static func run(executable: String, arguments: [String]) async throws -> String {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: executable)
@@ -27,6 +42,8 @@ enum ProcessRunner {
         let stderr = Pipe()
         process.standardOutput = stdout
         process.standardError = stderr
+
+        let cancelFlag = CancelFlag()
 
         return try await withTaskCancellationHandler {
             try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<String, Error>) in
@@ -42,6 +59,10 @@ enum ProcessRunner {
                     process.waitUntilExit()
 
                     if process.terminationStatus != 0 {
+                        if cancelFlag.get() {
+                            continuation.resume(throwing: CancellationError())
+                            return
+                        }
                         let errData = stderr.fileHandleForReading.readDataToEndOfFile()
                         let message = String(data: errData, encoding: .utf8) ?? ""
                         continuation.resume(throwing: ExecutionError(
@@ -56,6 +77,7 @@ enum ProcessRunner {
                 }
             }
         } onCancel: {
+            cancelFlag.set()
             process.terminate()
         }
     }

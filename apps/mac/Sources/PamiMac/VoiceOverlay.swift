@@ -22,14 +22,20 @@ final class VoiceOverlay {
     static let shared = VoiceOverlay()
 
     private var panel: NSPanel?
+    private var hosting: NSHostingView<VoiceOverlayView>?
     private let state = VoiceOverlayState()
     private var hideTask: Task<Void, Never>?
 
-    func showListening() {
+    // `onCancel` is offered for every phase where something's actually in
+    // flight and worth stopping (listening for your voice, a request being
+    // worked on, or a response being read aloud) — not for .heard/.error,
+    // which are already-resolved outcomes that dismiss on their own.
+    func showListening(onCancel: (() -> Void)? = nil) {
         hideTask?.cancel()
         withAnimation(.easeOut(duration: 0.2)) {
             state.phase = .listening
             state.message = nil
+            state.onCancel = onCancel
         }
         ensureWindow()
         panel?.orderFrontRegardless()
@@ -37,20 +43,22 @@ final class VoiceOverlay {
 
     // Between "heard you" and having a result — the request is off being
     // worked on (Claude Code / OpenCode / AppleScript automation).
-    func showThinking() {
+    func showThinking(onCancel: (() -> Void)? = nil) {
         hideTask?.cancel()
         withAnimation(.easeOut(duration: 0.2)) {
             state.phase = .thinking
+            state.onCancel = onCancel
         }
         ensureWindow()
         panel?.orderFrontRegardless()
     }
 
     // While `say` is actually talking — see TextToSpeech.speak(_:onFinish:).
-    func showSpeaking() {
+    func showSpeaking(onCancel: (() -> Void)? = nil) {
         hideTask?.cancel()
         withAnimation(.easeOut(duration: 0.2)) {
             state.phase = .speaking
+            state.onCancel = onCancel
         }
         ensureWindow()
         panel?.orderFrontRegardless()
@@ -61,6 +69,7 @@ final class VoiceOverlay {
         withAnimation(.easeOut(duration: 0.2)) {
             state.phase = .heard
             state.message = text
+            state.onCancel = nil
         }
         ensureWindow()
         panel?.orderFrontRegardless()
@@ -72,6 +81,7 @@ final class VoiceOverlay {
         withAnimation(.easeOut(duration: 0.2)) {
             state.phase = .error
             state.message = text
+            state.onCancel = nil
         }
         ensureWindow()
         panel?.orderFrontRegardless()
@@ -102,8 +112,22 @@ final class VoiceOverlay {
         state.visible = true
         guard panel == nil else { return }
 
+        // The bubble's width varies a lot by phase — "Thinking…" vs. a full
+        // transcribed sentence in .heard — so it can't be given one static
+        // frame. state.onSizeChange is fed by a GeometryReader inside
+        // VoiceOverlayView (below) reporting SwiftUI's own measured content
+        // size on every layout pass, and applyContentSize(_:) below resizes
+        // the actual NSPanel to match, anchored to the same top-right
+        // corner. Without this, a fixed NSHostingView frame either clips
+        // long text or forces short labels to wrap mid-word into a box far
+        // narrower than intended.
+        state.onSizeChange = { [weak self] size in
+            self?.applyContentSize(size)
+        }
+
         let hosting = NSHostingView(rootView: VoiceOverlayView(state: state))
-        hosting.frame = NSRect(x: 0, y: 0, width: 240, height: 72)
+        let initialSize = NSSize(width: 220, height: 54)
+        hosting.frame = NSRect(origin: .zero, size: initialSize)
 
         let panel = NSPanel(
             contentRect: hosting.frame,
@@ -114,7 +138,11 @@ final class VoiceOverlay {
         panel.isOpaque = false
         panel.backgroundColor = .clear
         panel.level = .floating
-        panel.ignoresMouseEvents = true
+        // false so the Cancel button is actually clickable — the panel is
+        // sized to hug its content (see applyContentSize below), so this
+        // only ever intercepts clicks within the small bubble itself, not
+        // the rest of the screen.
+        panel.ignoresMouseEvents = false
         panel.hasShadow = true
         panel.collectionBehavior = [.canJoinAllSpaces, .stationary, .fullScreenAuxiliary]
         panel.contentView = hosting
@@ -123,12 +151,30 @@ final class VoiceOverlay {
             // Top-right, tucked just under the menu bar and in from the
             // screen edge — clear of the notch/menu-bar icons that live at
             // top-center and top-left.
-            let x = screen.visibleFrame.maxX - hosting.frame.width - 16
-            let y = screen.frame.maxY - hosting.frame.height - 8
+            let x = screen.visibleFrame.maxX - initialSize.width - 16
+            let y = screen.frame.maxY - initialSize.height - 8
             panel.setFrameOrigin(NSPoint(x: x, y: y))
         }
 
         self.panel = panel
+        self.hosting = hosting
+    }
+
+    private func applyContentSize(_ size: CGSize) {
+        guard let panel, let hosting, size.width > 1, size.height > 1 else { return }
+        let width = ceil(size.width)
+        let height = ceil(size.height)
+        guard let screen = NSScreen.main else { return }
+
+        // Right edge and top edge stay put; only the left edge and bottom
+        // edge move as the bubble grows/shrinks, so it never drifts away
+        // from its top-right anchor as the label changes.
+        let x = screen.visibleFrame.maxX - width - 16
+        let topY = screen.frame.maxY - 8
+        let y = topY - height
+
+        hosting.setFrameSize(NSSize(width: width, height: height))
+        panel.setFrame(NSRect(x: x, y: y, width: width, height: height), display: true)
     }
 }
 
@@ -138,10 +184,36 @@ final class VoiceOverlayState: ObservableObject {
     @Published var phase: Phase = .listening
     @Published var message: String?
     @Published var visible: Bool = true
+
+    // Not @Published on purpose — set once by VoiceOverlay.ensureWindow(),
+    // called from VoiceOverlayView's GeometryReader on every layout pass to
+    // report SwiftUI's real measured size back out to the owning NSPanel.
+    var onSizeChange: ((CGSize) -> Void)?
+
+    // Set alongside `phase` in each show*(onCancel:) call above, so a
+    // change here always rides along with a `phase` change that SwiftUI
+    // already re-renders for — nil hides the Cancel button entirely.
+    var onCancel: (() -> Void)?
+}
+
+private struct OverlaySizeKey: PreferenceKey {
+    static var defaultValue: CGSize = .zero
+    static func reduce(value: inout CGSize, nextValue: () -> CGSize) {
+        value = nextValue()
+    }
 }
 
 private struct VoiceOverlayView: View {
     @ObservedObject var state: VoiceOverlayState
+
+    // Short phase labels ("Thinking…") must never wrap — that's what was
+    // producing the mid-word "Thinki"/"ng…" cutoff. Only .heard/.error can
+    // carry a longer, unpredictable string (a full transcribed sentence, or
+    // an error message), so only those get a second line and a width cap
+    // to wrap within instead of growing the bubble arbitrarily wide.
+    private var isLongForm: Bool {
+        state.phase == .heard || state.phase == .error
+    }
 
     var body: some View {
         HStack(spacing: 12) {
@@ -151,8 +223,21 @@ private struct VoiceOverlayView: View {
             Text(label)
                 .font(.system(size: 13, weight: .medium))
                 .foregroundStyle(.white)
-                .lineLimit(2)
-                .fixedSize(horizontal: false, vertical: true)
+                .lineLimit(isLongForm ? 2 : 1)
+                .fixedSize(horizontal: !isLongForm, vertical: true)
+                .frame(maxWidth: isLongForm ? 260 : nil, alignment: .leading)
+
+            if let onCancel = state.onCancel {
+                Button(action: onCancel) {
+                    Image(systemName: "xmark")
+                        .font(.system(size: 10, weight: .bold))
+                        .foregroundStyle(.white.opacity(0.85))
+                        .frame(width: 20, height: 20)
+                        .background(.white.opacity(0.15), in: Circle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Cancel")
+            }
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 10)
@@ -170,6 +255,15 @@ private struct VoiceOverlayView: View {
         .shadow(color: pamiGradientColors[1].opacity(0.35), radius: 16, y: 4)
         .scaleEffect(state.visible ? 1 : 0.85)
         .opacity(state.visible ? 1 : 0)
+        .fixedSize()
+        .background(
+            GeometryReader { proxy in
+                Color.clear
+                    .onAppear { state.onSizeChange?(proxy.size) }
+                    .onChange(of: proxy.size) { newSize in state.onSizeChange?(newSize) }
+                    .preference(key: OverlaySizeKey.self, value: proxy.size)
+            },
+        )
     }
 
     private var label: String {

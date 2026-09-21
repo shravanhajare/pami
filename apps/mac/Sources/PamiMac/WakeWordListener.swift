@@ -138,18 +138,29 @@ actor WakeWordListener {
 
         if heard {
             consecutiveFailures = 0
+            // Wrapped in its own Task (rather than awaited inline) so the
+            // overlay's Cancel button has something to call .cancel() on —
+            // VoiceCapture.captureOnce()'s polling loop checks cancellation
+            // every 200ms and throws CancellationError, which its `defer`
+            // still tears the audio engine down cleanly for.
+            let captureTask = Task { try await VoiceCapture.captureOnce() }
             await MainActor.run {
                 appState.voiceStatus = "Heard \"Hey PAMI\" — listening…"
-                VoiceOverlay.shared.showListening()
+                VoiceOverlay.shared.showListening(onCancel: { captureTask.cancel() })
             }
             do {
-                let text = try await VoiceCapture.captureOnce()
+                let text = try await captureTask.value
                 await MainActor.run {
                     appState.voiceStatus = "Heard: \(text)"
                     VoiceOverlay.shared.showHeard(text)
                     appState.voiceTaskInFlight = true
                 }
                 try await HeartbeatLoop.shared.createAskTask(appState: appState, prompt: text)
+            } catch is CancellationError {
+                await MainActor.run {
+                    appState.voiceStatus = "Cancelled."
+                    VoiceOverlay.shared.hide()
+                }
             } catch {
                 await MainActor.run {
                     appState.voiceStatus = "Didn't catch a request after the wake word."

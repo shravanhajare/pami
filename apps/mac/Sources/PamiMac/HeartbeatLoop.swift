@@ -9,6 +9,18 @@ actor HeartbeatLoop {
     private var backoff: TimeInterval = 5
     private var running = false
 
+    // The in-flight execute(task:) for a voice-originated "ask" — tracked
+    // so the overlay's Cancel button (during the "Thinking…" phase) has
+    // something to call .cancel() on. Cancelling it propagates down through
+    // ClaudeCodeProvider/OpenCodeProvider's ProcessRunner, which terminates
+    // the underlying CLI subprocess (see ProcessRunner.swift's
+    // withTaskCancellationHandler), not just abandoning the Swift Task.
+    private var currentVoiceExecTask: Task<String, Error>?
+
+    func cancelCurrentVoiceTask() {
+        currentVoiceExecTask?.cancel()
+    }
+
     func start(appState: AppState) {
         guard !running else { return }
         running = true
@@ -121,11 +133,27 @@ actor HeartbeatLoop {
         let voiceTaskInFlight = await AppState.shared.voiceTaskInFlight
         let isVoiceOriginated = task.type == "ask" && voiceTaskInFlight
         if isVoiceOriginated {
-            await MainActor.run { VoiceOverlay.shared.showThinking() }
+            await MainActor.run {
+                VoiceOverlay.shared.showThinking(onCancel: {
+                    Task { await HeartbeatLoop.shared.cancelCurrentVoiceTask() }
+                })
+            }
         }
 
         do {
-            let result = try await execute(task: task)
+            let result: String
+            if isVoiceOriginated {
+                // Run through a cancellable Task rather than awaiting
+                // execute(task:) inline, so cancelCurrentVoiceTask() (wired
+                // to the overlay's Cancel button above) can actually stop
+                // it mid-flight instead of only detaching from it.
+                let execTask = Task { try await self.execute(task: task) }
+                currentVoiceExecTask = execTask
+                defer { currentVoiceExecTask = nil }
+                result = try await execTask.value
+            } else {
+                result = try await execute(task: task)
+            }
             try await api.ackTask(deviceToken: deviceToken, taskId: task.id, status: "completed", result: result)
 
             // Voice output only for the conversational "ask" path — not
@@ -135,7 +163,7 @@ actor HeartbeatLoop {
                 let shouldSpeak = await AppState.shared.voiceResponsesEnabled
                 if shouldSpeak {
                     if isVoiceOriginated {
-                        await MainActor.run { VoiceOverlay.shared.showSpeaking() }
+                        await MainActor.run { VoiceOverlay.shared.showSpeaking(onCancel: { TextToSpeech.stop() }) }
                         await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
                             TextToSpeech.speak(result) {
                                 continuation.resume()
@@ -148,6 +176,11 @@ actor HeartbeatLoop {
                 } else if isVoiceOriginated {
                     await MainActor.run { VoiceOverlay.shared.hide() }
                 }
+            }
+        } catch is CancellationError {
+            try? await api.ackTask(deviceToken: deviceToken, taskId: task.id, status: "cancelled", result: "Cancelled.")
+            if isVoiceOriginated {
+                await MainActor.run { VoiceOverlay.shared.hide() }
             }
         } catch {
             try? await api.ackTask(
@@ -213,6 +246,11 @@ actor HeartbeatLoop {
                 return try await withTimeout(seconds: 20) {
                     try await OpenCodeProvider.run(prompt: prompt)
                 }
+            } catch is CancellationError {
+                // A genuine cancel (the overlay's Cancel button) — not a
+                // timeout, so don't retry via Claude Code, just propagate
+                // it so the caller can tell "cancelled" apart from "failed".
+                throw CancellationError()
             } catch {
                 return try await ClaudeCodeProvider.run(prompt: prompt)
             }

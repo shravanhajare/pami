@@ -84,14 +84,21 @@ struct MenuContent: View {
     private func startVoiceCapture() {
         appState.isListening = true
         appState.voiceStatus = "Listening…"
-        VoiceOverlay.shared.showListening()
+        // Wrapped in its own Task (rather than awaited inline in the outer
+        // one below) so the overlay's Cancel button has something to call
+        // .cancel() on.
+        let captureTask = Task { try await VoiceCapture.captureOnce() }
+        VoiceOverlay.shared.showListening(onCancel: { captureTask.cancel() })
         Task {
             do {
-                let text = try await VoiceCapture.captureOnce()
+                let text = try await captureTask.value
                 appState.voiceStatus = "Heard: \(text)"
                 VoiceOverlay.shared.showHeard(text)
                 appState.voiceTaskInFlight = true
                 try await heartbeatLoop.createAskTask(appState: appState, prompt: text)
+            } catch is CancellationError {
+                appState.voiceStatus = "Cancelled."
+                VoiceOverlay.shared.hide()
             } catch is VoiceCapture.NotAuthorized {
                 appState.voiceStatus = "Microphone/Speech Recognition access needed — check System Settings > Privacy."
                 VoiceOverlay.shared.showError("Need Microphone/Speech access")
