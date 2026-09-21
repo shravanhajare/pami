@@ -36,6 +36,8 @@ struct MenuContent: View {
         ))
         .disabled(appState.connectionState != .connected)
 
+        Toggle("Speak Responses", isOn: $appState.voiceResponsesEnabled)
+
         if let voiceStatus = appState.voiceStatus {
             Text(voiceStatus)
         }

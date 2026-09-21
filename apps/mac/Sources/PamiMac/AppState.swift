@@ -25,6 +25,15 @@ final class AppState: ObservableObject {
     @Published var isWakeWordActive = false
     @Published var voiceStatus: String?
 
+    // Persisted across launches, unlike the other toggles above — this is
+    // a standing preference ("always speak responses"), not a per-session
+    // mode.
+    @Published var voiceResponsesEnabled: Bool = UserDefaults.standard.bool(forKey: "voiceResponsesEnabled") {
+        didSet {
+            UserDefaults.standard.set(voiceResponsesEnabled, forKey: "voiceResponsesEnabled")
+        }
+    }
+
     var deviceToken: String? {
         Keychain.loadDeviceToken()
     }

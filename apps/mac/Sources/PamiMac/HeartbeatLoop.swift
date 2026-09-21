@@ -121,6 +121,16 @@ actor HeartbeatLoop {
         do {
             let result = try await execute(task: task)
             try await api.ackTask(deviceToken: deviceToken, taskId: task.id, status: "completed", result: result)
+
+            // Voice output only for the conversational "ask" path — not
+            // for calendar/notes/reminders confirmations or raw shell
+            // command output, which the user didn't ask to hear read aloud.
+            if task.type == "ask" {
+                let shouldSpeak = await AppState.shared.voiceResponsesEnabled
+                if shouldSpeak {
+                    TextToSpeech.speak(result)
+                }
+            }
         } catch {
             try? await api.ackTask(
                 deviceToken: deviceToken,
@@ -143,7 +153,7 @@ actor HeartbeatLoop {
             return
         }
         do {
-            let output = try SystemTools.runCommand(command)
+            let output = try await SystemTools.runCommand(command)
             try await api.ackTask(deviceToken: deviceToken, taskId: task.id, status: "completed", result: output)
         } catch {
             try? await api.ackTask(deviceToken: deviceToken, taskId: task.id, status: "failed", result: error.localizedDescription)
@@ -168,7 +178,19 @@ actor HeartbeatLoop {
             if looksLikeDevelopmentRequest(prompt) {
                 return try await ClaudeCodeProvider.run(prompt: prompt)
             }
-            return try await OpenCodeProvider.run(prompt: prompt)
+            // The free NVIDIA route has turned out to be unreliable — one
+            // request hung for 3 minutes before failing with a network
+            // error. A "conversational" assistant that sometimes takes
+            // minutes (or never responds) isn't acceptable, so give it a
+            // bounded window and fall back to Claude Code if it blows past
+            // that — still free-first when it behaves, but reliable either way.
+            do {
+                return try await withTimeout(seconds: 20) {
+                    try await OpenCodeProvider.run(prompt: prompt)
+                }
+            } catch {
+                return try await ClaudeCodeProvider.run(prompt: prompt)
+            }
 
         case "calendar_today":
             return try MacIntegrations.todayEvents()
@@ -181,7 +203,7 @@ actor HeartbeatLoop {
 
         case "system_command":
             guard let command = task.prompt else { return "No command provided." }
-            return try SystemTools.runCommand(command) // only reached when isReadOnly() already passed
+            return try await SystemTools.runCommand(command) // only reached when isReadOnly() already passed
 
         default:
             return "PAMI activated on \(DeviceIdentity.deviceName)."
@@ -209,4 +231,23 @@ actor HeartbeatLoop {
 
 enum AppVersion {
     static let current = "0.1.0"
+}
+
+struct TimeoutError: Error {}
+
+// Races `operation` against a deadline. If the deadline wins, this throws
+// TimeoutError and the caller can fall back — note the losing operation
+// keeps running in the background (Process calls don't respect Swift task
+// cancellation), it's just no longer waited on.
+func withTimeout<T: Sendable>(seconds: TimeInterval, operation: @escaping @Sendable () async throws -> T) async throws -> T {
+    try await withThrowingTaskGroup(of: T.self) { group in
+        group.addTask { try await operation() }
+        group.addTask {
+            try await Task.sleep(for: .seconds(seconds))
+            throw TimeoutError()
+        }
+        guard let result = try await group.next() else { throw TimeoutError() }
+        group.cancelAll()
+        return result
+    }
 }

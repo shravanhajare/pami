@@ -21,26 +21,9 @@ enum ClaudeCodeProvider {
     static func run(prompt: String) async throws -> String {
         guard let binary = locateBinary() else { throw NotFound() }
 
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: binary)
-        process.arguments = ["-p", prompt, "--output-format", "text", "--tools", ""]
-
-        let stdout = Pipe()
-        let stderr = Pipe()
-        process.standardOutput = stdout
-        process.standardError = stderr
-
-        try process.run()
-
-        let outputData = try stdout.fileHandleForReading.readToEnd() ?? Data()
-        process.waitUntilExit()
-
-        if process.terminationStatus != 0 {
-            let errorData = try? stderr.fileHandleForReading.readToEnd()
-            let message = errorData.flatMap { String(data: $0, encoding: .utf8) } ?? "unknown error"
-            throw NSError(domain: "ClaudeCodeProvider", code: Int(process.terminationStatus), userInfo: [NSLocalizedDescriptionKey: message])
-        }
-
-        return String(data: outputData, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        return try await ProcessRunner.run(
+            executable: binary,
+            arguments: ["-p", prompt, "--output-format", "text", "--tools", ""],
+        )
     }
 }

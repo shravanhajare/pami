@@ -21,30 +21,14 @@ enum OpenCodeProvider {
     static func run(prompt: String) async throws -> String {
         guard let binary = locateBinary() else { throw NotFound() }
 
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: binary)
-        process.arguments = ["run", prompt, "--agent", "pami-chat"]
-
-        let stdout = Pipe()
-        let stderr = Pipe()
-        process.standardOutput = stdout
-        process.standardError = stderr
-
-        try process.run()
-
-        let outputData = try stdout.fileHandleForReading.readToEnd() ?? Data()
-        process.waitUntilExit()
-
-        if process.terminationStatus != 0 {
-            let errorData = try? stderr.fileHandleForReading.readToEnd()
-            let message = errorData.flatMap { String(data: $0, encoding: .utf8) } ?? "unknown error"
-            throw NSError(domain: "OpenCodeProvider", code: Int(process.terminationStatus), userInfo: [NSLocalizedDescriptionKey: message])
-        }
+        let raw = try await ProcessRunner.run(
+            executable: binary,
+            arguments: ["run", prompt, "--agent", "pami-chat"],
+        )
 
         // opencode's default output includes a "> agent · model" banner line
         // before the actual reply — strip it so the dashboard shows just
         // the answer, matching what ClaudeCodeProvider returns.
-        let raw = String(data: outputData, encoding: .utf8) ?? ""
         let lines = raw.split(separator: "\n", omittingEmptySubsequences: false)
         let contentLines = lines.filter { !$0.hasPrefix(">") && !$0.trimmingCharacters(in: .whitespaces).isEmpty }
         let text = contentLines.isEmpty ? raw : contentLines.joined(separator: "\n")

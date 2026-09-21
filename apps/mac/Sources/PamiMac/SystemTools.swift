@@ -28,32 +28,17 @@ enum SystemTools {
         return readOnlyPrefixes.contains { trimmed == $0 || trimmed.hasPrefix($0 + " ") }
     }
 
-    static func runCommand(_ command: String) throws -> String {
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: "/bin/zsh")
-        process.arguments = ["-lc", command]
-        process.currentDirectoryURL = workspaceRoot
-
-        let stdout = Pipe()
-        let stderr = Pipe()
-        process.standardOutput = stdout
-        process.standardError = stderr
-        try process.run()
-
-        let outData = try stdout.fileHandleForReading.readToEnd() ?? Data()
-        let errData = try stderr.fileHandleForReading.readToEnd() ?? Data()
-        process.waitUntilExit()
-
-        if process.terminationStatus != 0 {
-            let err = String(data: errData, encoding: .utf8) ?? ""
-            throw NSError(
-                domain: "SystemTools",
-                code: Int(process.terminationStatus),
-                userInfo: [NSLocalizedDescriptionKey: err.isEmpty ? "command exited with status \(process.terminationStatus)" : err],
-            )
-        }
-
-        let out = String(data: outData, encoding: .utf8) ?? ""
+    static func runCommand(_ command: String) async throws -> String {
+        // -lc runs it through zsh, and `cd` first since ProcessRunner's
+        // generic executor has no notion of a working directory.
+        let out = try await ProcessRunner.run(
+            executable: "/bin/zsh",
+            arguments: ["-lc", "cd \(shellEscape(workspaceRoot.path)) && \(command)"],
+        )
         return out.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "(no output)" : out
+    }
+
+    private static func shellEscape(_ path: String) -> String {
+        "'" + path.replacingOccurrences(of: "'", with: "'\\''") + "'"
     }
 }

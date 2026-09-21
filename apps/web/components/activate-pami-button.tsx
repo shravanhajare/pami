@@ -27,7 +27,12 @@ export function ActivatePamiButton({ userId }: { userId: string }) {
 
   return (
     <div className="flex flex-col gap-2">
-      <Button size="lg" onClick={handleActivate} disabled={pending}>
+      <Button
+        size="lg"
+        onClick={handleActivate}
+        disabled={pending}
+        className="pami-gradient w-full border-0 text-white shadow-lg shadow-purple-500/20 transition-transform hover:scale-[1.01] hover:opacity-95 active:scale-[0.99]"
+      >
         {pending ? "Activating…" : "Activate PAMI"}
       </Button>
       {error && <p className="text-sm text-destructive">{error}</p>}
