@@ -5,6 +5,7 @@
 // dashboard's Approve/Deny buttons act on.
 import { corsHeaders, handleOptions, jsonResponse } from "../_shared/cors.ts";
 import { createAdminClient, requireTrustedDevice } from "../_shared/supabaseAdmin.ts";
+import { sendPushToUser } from "../_shared/webpush.ts";
 
 Deno.serve(async (req) => {
   const preflight = handleOptions(req);
@@ -52,6 +53,19 @@ Deno.serve(async (req) => {
       task_id,
       event_type: "approval_requested",
       payload: { requested_action },
+    });
+
+    const command =
+      requested_action && typeof requested_action === "object" && "command" in requested_action
+        ? String((requested_action as { command: unknown }).command)
+        : "a command";
+    // Best-effort — sendPushToUser never throws, so a push failure (or no
+    // subscriptions at all) can't turn a successful approval request into
+    // an error response.
+    await sendPushToUser(admin, device.user_id, {
+      title: "PAMI needs your approval",
+      body: command,
+      url: "/dashboard",
     });
 
     return jsonResponse({ ok: true, approval_id: approval.id });

@@ -2,6 +2,7 @@ import { createClient } from "@/lib/supabase/server";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { SignOutButton } from "@/components/sign-out-button";
 import { VoiceSettingsForm } from "@/components/voice-settings-form";
+import { PushSettingsForm } from "@/components/push-settings-form";
 
 export default async function SettingsPage() {
   const supabase = await createClient();
@@ -32,6 +33,16 @@ export default async function SettingsPage() {
             userId={user!.id}
             initialEnabled={profile?.voice_responses_enabled ?? true}
           />
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">Notifications</CardTitle>
+          <CardDescription>Get a push notification when PAMI needs you.</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <PushSettingsForm userId={user!.id} />
         </CardContent>
       </Card>
 
