@@ -14,6 +14,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 
+
 export default function LoginPage() {
   const router = useRouter();
   const supabase = createClient();
