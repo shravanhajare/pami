@@ -27,6 +27,11 @@ export const metadata: Metadata = {
 
 export const viewport: Viewport = {
   themeColor: "#0a0a0a",
+  // Lets env(safe-area-inset-*) resolve to real values instead of 0 — needed
+  // for the bottom tab bar/header to clear the iPhone notch and home
+  // indicator when this is added to the Home Screen as a standalone PWA
+  // (see manifest.ts: display: "standalone").
+  viewportFit: "cover",
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {

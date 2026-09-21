@@ -25,14 +25,21 @@ final class AppState: ObservableObject {
     @Published var isWakeWordActive = false
     @Published var voiceStatus: String?
 
-    // Persisted across launches, unlike the other toggles above — this is
-    // a standing preference ("always speak responses"), not a per-session
-    // mode.
-    @Published var voiceResponsesEnabled: Bool = UserDefaults.standard.bool(forKey: "voiceResponsesEnabled") {
-        didSet {
-            UserDefaults.standard.set(voiceResponsesEnabled, forKey: "voiceResponsesEnabled")
-        }
-    }
+    // Set right after a voice-originated "ask" task is created (wake word
+    // or menu bar Voice Mode) and cleared once HeartbeatLoop finishes
+    // processing it — lets the overlay show "Thinking…"/"Speaking…" only
+    // for requests that actually came in by voice, not every task in the
+    // queue (e.g. one someone just fired off from the dashboard).
+    var voiceTaskInFlight = false
+
+    // Source of truth is the website's Settings page (profiles.voice_
+    // responses_enabled), not a local toggle — pulled in on every heartbeat
+    // via apply(_:) below, so the phone/browser can turn Mac speech on/off
+    // without touching the Mac at all. The UserDefaults-cached value is only
+    // a best-guess for the brief window before the first heartbeat lands.
+    @Published var voiceResponsesEnabled: Bool = UserDefaults.standard.object(forKey: "voiceResponsesEnabled") == nil
+        ? true
+        : UserDefaults.standard.bool(forKey: "voiceResponsesEnabled")
 
     var deviceToken: String? {
         Keychain.loadDeviceToken()
@@ -66,5 +73,9 @@ final class AppState: ObservableObject {
         }
         connectionState = .connected
         currentTask = result.tasks.first
+        if let voiceResponsesEnabled = result.voice_responses_enabled {
+            self.voiceResponsesEnabled = voiceResponsesEnabled
+            UserDefaults.standard.set(voiceResponsesEnabled, forKey: "voiceResponsesEnabled")
+        }
     }
 }

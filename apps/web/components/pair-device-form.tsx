@@ -33,8 +33,8 @@ export function PairDeviceForm() {
   }
 
   return (
-    <form onSubmit={handleSubmit} className="flex items-end gap-2">
-      <div className="flex flex-col gap-2">
+    <form onSubmit={handleSubmit} className="flex flex-col gap-3 sm:flex-row sm:items-end sm:gap-2">
+      <div className="flex flex-1 flex-col gap-2">
         <Label htmlFor="pairing-code">Pairing code from your Mac</Label>
         <Input
           id="pairing-code"
@@ -44,7 +44,7 @@ export function PairDeviceForm() {
           required
         />
       </div>
-      <Button type="submit" disabled={pending || !code}>
+      <Button type="submit" disabled={pending || !code} className="sm:w-auto">
         {pending ? "Pairing…" : "Add this Mac"}
       </Button>
       {error && <p className="text-sm text-destructive">{error}</p>}

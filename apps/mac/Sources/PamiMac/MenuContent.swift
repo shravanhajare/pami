@@ -36,7 +36,10 @@ struct MenuContent: View {
         ))
         .disabled(appState.connectionState != .connected)
 
-        Toggle("Speak Responses", isOn: $appState.voiceResponsesEnabled)
+        // Read-only here on purpose: the website's Settings page is the one
+        // place this is controlled (per the user's request that audio be a
+        // website-only toggle, not something each Mac decides locally).
+        Text("Speak Responses: \(appState.voiceResponsesEnabled ? "On" : "Off") (in dashboard)")
 
         if let voiceStatus = appState.voiceStatus {
             Text(voiceStatus)
@@ -87,6 +90,7 @@ struct MenuContent: View {
                 let text = try await VoiceCapture.captureOnce()
                 appState.voiceStatus = "Heard: \(text)"
                 VoiceOverlay.shared.showHeard(text)
+                appState.voiceTaskInFlight = true
                 try await heartbeatLoop.createAskTask(appState: appState, prompt: text)
             } catch is VoiceCapture.NotAuthorized {
                 appState.voiceStatus = "Microphone/Speech Recognition access needed — check System Settings > Privacy."

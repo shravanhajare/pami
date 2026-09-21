@@ -147,6 +147,7 @@ actor WakeWordListener {
                 await MainActor.run {
                     appState.voiceStatus = "Heard: \(text)"
                     VoiceOverlay.shared.showHeard(text)
+                    appState.voiceTaskInFlight = true
                 }
                 try await HeartbeatLoop.shared.createAskTask(appState: appState, prompt: text)
             } catch {

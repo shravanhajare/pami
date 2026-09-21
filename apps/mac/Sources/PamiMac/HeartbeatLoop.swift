@@ -118,6 +118,12 @@ actor HeartbeatLoop {
             return
         }
 
+        let voiceTaskInFlight = await AppState.shared.voiceTaskInFlight
+        let isVoiceOriginated = task.type == "ask" && voiceTaskInFlight
+        if isVoiceOriginated {
+            await MainActor.run { VoiceOverlay.shared.showThinking() }
+        }
+
         do {
             let result = try await execute(task: task)
             try await api.ackTask(deviceToken: deviceToken, taskId: task.id, status: "completed", result: result)
@@ -128,7 +134,19 @@ actor HeartbeatLoop {
             if task.type == "ask" {
                 let shouldSpeak = await AppState.shared.voiceResponsesEnabled
                 if shouldSpeak {
-                    TextToSpeech.speak(result)
+                    if isVoiceOriginated {
+                        await MainActor.run { VoiceOverlay.shared.showSpeaking() }
+                        await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+                            TextToSpeech.speak(result) {
+                                continuation.resume()
+                            }
+                        }
+                        await MainActor.run { VoiceOverlay.shared.hide() }
+                    } else {
+                        TextToSpeech.speak(result)
+                    }
+                } else if isVoiceOriginated {
+                    await MainActor.run { VoiceOverlay.shared.hide() }
                 }
             }
         } catch {
@@ -138,6 +156,13 @@ actor HeartbeatLoop {
                 status: "failed",
                 result: "\(error.localizedDescription)",
             )
+            if isVoiceOriginated {
+                await MainActor.run { VoiceOverlay.shared.showError("Couldn't finish that") }
+            }
+        }
+
+        if isVoiceOriginated {
+            await MainActor.run { AppState.shared.voiceTaskInFlight = false }
         }
     }
 
@@ -204,6 +229,35 @@ actor HeartbeatLoop {
         case "system_command":
             guard let command = task.prompt else { return "No command provided." }
             return try await SystemTools.runCommand(command) // only reached when isReadOnly() already passed
+
+        case "lock_screen":
+            return try MacControl.lockScreen()
+
+        case "volume_get":
+            return try MacControl.getVolume()
+
+        case "volume_set":
+            guard let raw = task.prompt, let percent = Int(raw.trimmingCharacters(in: .whitespaces)) else {
+                return "Give a volume percentage from 0–100."
+            }
+            return try MacControl.setVolume(percent)
+
+        case "music_control":
+            return try MacControl.musicControl(action: task.prompt ?? "")
+
+        case "clipboard_get":
+            return MacControl.clipboardGet()
+
+        case "clipboard_set":
+            guard let text = task.prompt, !text.isEmpty else { return "No text provided." }
+            return MacControl.clipboardSet(text)
+
+        case "quit_app":
+            let name = task.prompt ?? task.title
+            return try MacControl.quitApp(named: name)
+
+        case "battery_status":
+            return try await MacControl.batteryStatus()
 
         default:
             return "PAMI activated on \(DeviceIdentity.deviceName)."

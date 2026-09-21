@@ -28,6 +28,13 @@ export function QuickActions({ userId }: { userId: string }) {
   const [reminderPending, setReminderPending] = useState(false);
   const [command, setCommand] = useState("");
   const [commandPending, setCommandPending] = useState(false);
+  const [macActionPending, setMacActionPending] = useState<string | null>(null);
+
+  async function runMacAction(type: string, title: string, prompt?: string) {
+    setMacActionPending(title);
+    await insertTask(userId, { type, title, prompt });
+    setMacActionPending(null);
+  }
 
   async function checkCalendar() {
     setCalendarPending(true);
@@ -79,7 +86,7 @@ export function QuickActions({ userId }: { userId: string }) {
   }
 
   return (
-    <div className="grid gap-4 sm:grid-cols-4">
+    <div className="grid gap-4 grid-cols-2 lg:grid-cols-4">
       <Card>
         <CardHeader>
           <CardTitle className="text-base">Calendar</CardTitle>
@@ -171,6 +178,36 @@ export function QuickActions({ userId }: { userId: string }) {
               approval below first.
             </p>
           </form>
+        </CardContent>
+      </Card>
+
+      <Card className="col-span-2 lg:col-span-4">
+        <CardHeader>
+          <CardTitle className="text-base">Mac control</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+            {[
+              { type: "lock_screen", title: "Lock screen" },
+              { type: "battery_status", title: "Battery status" },
+              { type: "clipboard_get", title: "Read clipboard" },
+              { type: "music_control", title: "Now playing", prompt: "now_playing" },
+              { type: "music_control", title: "Play", prompt: "play" },
+              { type: "music_control", title: "Pause", prompt: "pause" },
+              { type: "music_control", title: "Next track", prompt: "next" },
+              { type: "volume_set", title: "Volume 50%", prompt: "50" },
+            ].map((action) => (
+              <Button
+                key={`${action.type}-${action.title}`}
+                variant="outline"
+                size="sm"
+                disabled={macActionPending !== null}
+                onClick={() => runMacAction(action.type, action.title, action.prompt)}
+              >
+                {macActionPending === action.title ? "Sending…" : action.title}
+              </Button>
+            ))}
+          </div>
         </CardContent>
       </Card>
     </div>

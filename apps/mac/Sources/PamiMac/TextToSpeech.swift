@@ -9,14 +9,29 @@ import Foundation
 // setup/permissions needed.
 enum TextToSpeech {
     static func speak(_ text: String) {
+        speak(text, onFinish: {})
+    }
+
+    // `onFinish` lets callers (HeartbeatLoop) drive the voice overlay's
+    // "speaking" animation for exactly as long as `say` is actually
+    // talking, rather than guessing a fixed duration.
+    static func speak(_ text: String, onFinish: @escaping () -> Void) {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else { return }
+        guard !trimmed.isEmpty else {
+            onFinish()
+            return
+        }
 
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/usr/bin/say")
         process.arguments = [trimmed]
-        // Deliberately not awaited/waited-on — this runs independently so
-        // speaking a long response doesn't hold up the heartbeat loop.
-        try? process.run()
+        process.terminationHandler = { _ in
+            Task { @MainActor in onFinish() }
+        }
+        do {
+            try process.run()
+        } catch {
+            onFinish()
+        }
     }
 }

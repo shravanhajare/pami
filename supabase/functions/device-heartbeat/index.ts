@@ -57,6 +57,12 @@ Deno.serve(async (req) => {
     // heartbeats may be sent with an empty body; that's fine
   }
 
+  const { data: profile } = await admin
+    .from("profiles")
+    .select("voice_responses_enabled")
+    .eq("id", device.user_id)
+    .maybeSingle();
+
   const now = new Date().toISOString();
   await admin
     .from("devices")
@@ -127,5 +133,9 @@ Deno.serve(async (req) => {
     })
     .filter((t) => t !== null);
 
-  return jsonResponse({ status: "trusted", tasks: [...(pendingTasks ?? []), ...resolvedTasks] });
+  return jsonResponse({
+    status: "trusted",
+    tasks: [...(pendingTasks ?? []), ...resolvedTasks],
+    voice_responses_enabled: profile?.voice_responses_enabled ?? true,
+  });
 });

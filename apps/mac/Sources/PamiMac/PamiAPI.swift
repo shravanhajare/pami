@@ -19,6 +19,10 @@ struct HeartbeatResponse: Codable {
     let status: String // "pending" | "trusted"
     let pairing_code: String?
     let tasks: [PamiTask]
+    // The website's Settings page is the single source of truth for this —
+    // see AppState.voiceResponsesEnabled. Optional/defaulted because
+    // "pending" responses don't include it.
+    let voice_responses_enabled: Bool?
 }
 
 struct PairInitResponse: Codable {

@@ -1,9 +1,3 @@
-// Generated via the Supabase MCP server's generate_typescript_types tool
-// against the live schema. Regenerate the Database type below whenever
-// migrations change; the hand-written literal unions at the bottom exist
-// because Postgres check constraints don't translate to TS unions via the
-// generator — they're used for UI code that needs exhaustive status maps.
-
 export type Json =
   | string
   | number
@@ -13,6 +7,8 @@ export type Json =
   | Json[]
 
 export type Database = {
+  // Allows to automatically instantiate createClient with right options
+  // instead of createClient<Database, { PostgrestVersion: 'XX' }>(URL, KEY)
   __InternalSupabase: {
     PostgrestVersion: "14.5"
   }
@@ -151,18 +147,21 @@ export type Database = {
           display_name: string | null
           email: string | null
           id: string
+          voice_responses_enabled: boolean
         }
         Insert: {
           created_at?: string
           display_name?: string | null
           email?: string | null
           id: string
+          voice_responses_enabled?: boolean
         }
         Update: {
           created_at?: string
           display_name?: string | null
           email?: string | null
           id?: string
+          voice_responses_enabled?: boolean
         }
         Relationships: []
       }
