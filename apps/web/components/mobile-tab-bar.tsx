@@ -20,6 +20,13 @@ const ICONS: Record<string, React.ReactNode> = {
       <path d="M8 20h8M12 16v4" />
     </>
   ),
+  "/remote": (
+    <>
+      <rect x="2" y="4" width="14" height="10" rx="1.5" />
+      <path d="M6 18h6" />
+      <rect x="16" y="11" width="6" height="10" rx="1.5" />
+    </>
+  ),
   "/settings": (
     <>
       <circle cx="12" cy="12" r="3" />

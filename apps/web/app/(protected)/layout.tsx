@@ -7,6 +7,7 @@ const NAV_LINKS = [
   { href: "/dashboard", label: "Dashboard" },
   { href: "/tasks", label: "Tasks" },
   { href: "/mac", label: "Mac" },
+  { href: "/remote", label: "Remote" },
   { href: "/settings", label: "Settings" },
 ];
 
