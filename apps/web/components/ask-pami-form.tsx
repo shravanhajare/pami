@@ -1,9 +1,9 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { ArrowUp, Mic, Square, Terminal } from "lucide-react";
+import { cn } from "cn";
 import { createClient } from "@/lib/supabase/client";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 
 // The Web Speech API's SpeechRecognition constructor isn't in lib.dom.d.ts
 // yet and is vendor-prefixed on the browsers that do support it (Chrome/
@@ -36,17 +36,59 @@ function getSpeechRecognitionCtor(): SpeechRecognitionCtor | null {
   return w.SpeechRecognition ?? w.webkitSpeechRecognition ?? null;
 }
 
-export function AskPamiForm({ userId }: { userId: string }) {
-  const [text, setText] = useState("");
+// "$ brew upgrade" runs as a raw shell command; anything else is a
+// natural-language request for the Mac's agent.
+export function toTaskFields(text: string) {
+  const trimmed = text.trim();
+  const isCommand = trimmed.startsWith("$");
+  const body = isCommand ? trimmed.slice(1).trim() : trimmed;
+  return {
+    type: isCommand ? "system_command" : "ask",
+    title: body.length > 60 ? `${body.slice(0, 57)}...` : body,
+    prompt: body,
+  };
+}
+
+export async function sendToPami(userId: string, text: string) {
+  const supabase = createClient();
+  return supabase.from("tasks").insert({
+    user_id: userId,
+    source: "web",
+    status: "pending",
+    ...toTaskFields(text),
+  });
+}
+
+export function AskPamiForm({
+  userId,
+  initialText = "",
+  autoFocus = false,
+  onSent,
+}: {
+  userId: string;
+  initialText?: string;
+  autoFocus?: boolean;
+  onSent?: () => void;
+}) {
+  const [text, setText] = useState(initialText);
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [listening, setListening] = useState(false);
   const [speechSupported, setSpeechSupported] = useState(false);
   const recognitionRef = useRef<SpeechRecognitionLike | null>(null);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   useEffect(() => {
     setSpeechSupported(getSpeechRecognitionCtor() !== null);
   }, []);
+
+  // Grow with the content up to ~6 lines, then scroll inside.
+  useEffect(() => {
+    const el = textareaRef.current;
+    if (!el) return;
+    el.style.height = "auto";
+    el.style.height = `${Math.min(el.scrollHeight, 160)}px`;
+  }, [text]);
 
   function toggleListening() {
     const Ctor = getSpeechRecognitionCtor();
@@ -72,71 +114,93 @@ export function AskPamiForm({ userId }: { userId: string }) {
     recognition.start();
   }
 
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault();
-    if (!text.trim()) return;
+  async function submit() {
+    if (!text.trim() || pending) return;
     setPending(true);
     setError(null);
-
-    const supabase = createClient();
-    // Delegated to the Mac's Claude Code CLI once the Mac picks this up on
-    // its next heartbeat — see apps/mac/Sources/PamiMac/ClaudeCodeProvider.swift.
-    const { error } = await supabase.from("tasks").insert({
-      user_id: userId,
-      source: "web",
-      type: "ask",
-      title: text.length > 60 ? `${text.slice(0, 57)}...` : text,
-      prompt: text,
-      status: "pending",
-    });
-
+    const { error } = await sendToPami(userId, text);
     setPending(false);
     if (error) {
       setError(error.message);
       return;
     }
     setText("");
+    onSent?.();
   }
 
+  const isCommand = text.trim().startsWith("$");
+
   return (
-    <form onSubmit={handleSubmit} className="flex flex-col gap-2">
-      <div className="flex gap-2">
-        <Input
-          placeholder="Tell PAMI to do anything on your Mac…"
+    <form
+      onSubmit={(e) => {
+        e.preventDefault();
+        submit();
+      }}
+      className="flex flex-col gap-1.5"
+    >
+      <div
+        className={cn(
+          "pami-glass flex items-end gap-2 rounded-2xl p-2 shadow-lg shadow-black/20 transition-colors focus-within:border-primary/40",
+          isCommand && "focus-within:border-emerald-400/40",
+        )}
+      >
+        {isCommand && (
+          <span className="mb-1.5 ml-1 flex shrink-0 items-center gap-1 rounded-md bg-emerald-500/15 px-1.5 py-0.5 text-[11px] font-medium text-emerald-300">
+            <Terminal className="size-3" />
+            Shell
+          </span>
+        )}
+        <textarea
+          ref={textareaRef}
+          rows={1}
+          autoFocus={autoFocus}
           value={text}
+          placeholder="Tell PAMI what to do on your Mac…"
+          aria-label="Message PAMI"
           onChange={(e) => setText(e.target.value)}
-          className="flex-1"
+          onKeyDown={(e) => {
+            if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
+              e.preventDefault();
+              submit();
+            }
+          }}
+          className={cn(
+            "min-h-9 flex-1 resize-none bg-transparent px-2 py-2 text-[15px] leading-5 outline-none placeholder:text-muted-foreground",
+            isCommand && "font-mono text-sm",
+          )}
         />
         {speechSupported && (
-          <Button
+          <button
             type="button"
-            variant={listening ? "default" : "outline"}
-            size="icon"
-            aria-label={listening ? "Stop listening" : "Ask by voice"}
+            aria-label={listening ? "Stop listening" : "Speak your request"}
             onClick={toggleListening}
-            className={listening ? "pami-gradient border-0 text-white" : undefined}
+            className={cn(
+              "flex size-9 shrink-0 items-center justify-center rounded-xl text-muted-foreground transition-colors hover:bg-accent hover:text-foreground",
+              listening && "pami-gradient text-primary-foreground hover:text-primary-foreground",
+            )}
           >
-            <MicIcon listening={listening} />
-          </Button>
+            {listening ? <Square className="size-3.5 fill-current" /> : <Mic className="size-4.5" />}
+          </button>
         )}
-        <Button type="submit" disabled={pending || !text.trim()}>
-          {pending ? "Sending…" : "Ask"}
-        </Button>
+        <button
+          type="submit"
+          aria-label="Send"
+          disabled={pending || !text.trim()}
+          className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-primary text-primary-foreground transition-all hover:opacity-90 active:scale-95 disabled:opacity-30"
+        >
+          <ArrowUp className="size-4.5" strokeWidth={2.5} />
+        </button>
       </div>
-      {error && <p className="text-sm text-destructive">{error}</p>}
+      <p className="px-3 text-[11px] text-muted-foreground">
+        {error ? (
+          <span className="text-destructive">{error}</span>
+        ) : (
+          <>
+            <kbd className="font-sans">Enter</kbd> to send · start with{" "}
+            <code className="rounded bg-muted px-1">$</code> to run a shell command
+          </>
+        )}
+      </p>
     </form>
-  );
-}
-
-function MicIcon({ listening }: { listening: boolean }) {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
-      {listening && (
-        <circle cx="12" cy="12" r="10" className="animate-ping opacity-30" fill="currentColor" stroke="none" />
-      )}
-      <rect x="9" y="2" width="6" height="12" rx="3" />
-      <path d="M5 10a7 7 0 0 0 14 0" />
-      <path d="M12 19v3" />
-    </svg>
   );
 }

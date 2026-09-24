@@ -1,0 +1,24 @@
+{
+    "configurations": [
+        {
+            "type": "swift",
+            "request": "launch",
+            "args": [],
+            "cwd": "${workspaceFolder:Pami}/apps/mac",
+            "name": "Debug PamiMac (apps/mac)",
+            "target": "PamiMac",
+            "configuration": "debug",
+            "preLaunchTask": "swift: Build Debug PamiMac (apps/mac)"
+        },
+        {
+            "type": "swift",
+            "request": "launch",
+            "args": [],
+            "cwd": "${workspaceFolder:Pami}/apps/mac",
+            "name": "Release PamiMac (apps/mac)",
+            "target": "PamiMac",
+            "configuration": "release",
+            "preLaunchTask": "swift: Build Release PamiMac (apps/mac)"
+        }
+    ]
+}

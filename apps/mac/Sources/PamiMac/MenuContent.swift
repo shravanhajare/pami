@@ -78,6 +78,15 @@ struct MenuContent: View {
                     kind.request()
                 }
             }
+            Button("Allow All Apps Now…") {
+                appState.voiceStatus = "Approving app control — click Allow on each dialog…"
+                DispatchQueue.global(qos: .userInitiated).async {
+                    let result = Permissions.requestAllAutomation()
+                    DispatchQueue.main.async {
+                        appState.voiceStatus = "App control: \(result.granted)/\(result.total) apps allowed."
+                    }
+                }
+            }
             Divider()
             Button("New Conversation (forget context)") {
                 ClaudeCodeProvider.resetConversation()

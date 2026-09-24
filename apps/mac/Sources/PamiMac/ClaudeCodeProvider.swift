@@ -27,6 +27,8 @@ enum ClaudeCodeProvider {
         let is_error: Bool?
     }
 
+    static let model = "claude-sonnet-5"
+
     // How long a finished conversation stays "live" for follow-ups.
     private static let sessionWindow: TimeInterval = 10 * 60
 
@@ -83,6 +85,9 @@ enum ClaudeCodeProvider {
         var arguments = [
             "-p", prompt,
             "--output-format", "json",
+            // Pinned per the user's choice, rather than inheriting whatever
+            // default their CLI/account happens to have.
+            "--model", model,
             "--dangerously-skip-permissions",
             "--add-dir", "/",
             "--append-system-prompt", systemPrompt(),

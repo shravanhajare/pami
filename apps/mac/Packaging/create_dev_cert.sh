@@ -51,7 +51,9 @@ echo "Importing into the login keychain — you may see a Keychain access prompt
 echo "approve it so codesign can use this identity without asking each time."
 security import "$WORKDIR/cert.p12" -k "$KEYCHAIN" -P pami-local-dev -T /usr/bin/codesign -T /usr/bin/security
 
-security add-trusted-cert -r trustAsRoot -p codeSign -k "$KEYCHAIN" "$WORKDIR/cert.pem"
+# trustRoot, not trustAsRoot: the latter is only valid for non-self-signed
+# certs and fails with "One or more parameters ... were not valid".
+security add-trusted-cert -r trustRoot -p codeSign -k "$KEYCHAIN" "$WORKDIR/cert.pem"
 
 echo ""
 echo "Done. Created and trusted \"$CERT_NAME\" for code signing."

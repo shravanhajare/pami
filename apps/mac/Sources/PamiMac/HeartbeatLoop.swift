@@ -243,22 +243,10 @@ actor HeartbeatLoop {
             if let result = try await QuickCommands.handle(prompt) {
                 return result
             }
-            // Only pure general-knowledge questions ("what's the capital of
-            // France") go to the free, tool-less OpenCode route — anything
-            // that should *happen* on this Mac needs the Claude Code agent.
-            if looksLikeGeneralQuestion(prompt) {
-                // The free NVIDIA route has turned out to be unreliable, so
-                // give it a bounded window and fall back to the agent.
-                do {
-                    return try await withTimeout(seconds: 20) {
-                        try await OpenCodeProvider.run(prompt: prompt)
-                    }
-                } catch is CancellationError {
-                    // A genuine cancel (the overlay's Cancel button) — not a
-                    // timeout, so don't retry via Claude Code.
-                    throw CancellationError()
-                } catch {}
-            }
+            // Everything else — questions and actions alike — goes to the
+            // Claude Code agent on Sonnet 5 (the user's choice of a single
+            // model for every request, replacing the old free OpenCode
+            // route for general questions).
             return try await runAgent(prompt: prompt)
 
         case "calendar_today":
@@ -327,32 +315,6 @@ actor HeartbeatLoop {
         } catch is TimeoutError {
             throw ClaudeCodeProvider.AgentError(message: "That took longer than 10 minutes, so I stopped it.")
         }
-    }
-
-    // A keyword heuristic, not real intent classification: a question
-    // ("what/who/why/how…") that doesn't mention anything on this Mac or
-    // the user's own stuff is general knowledge; everything else — every
-    // imperative ("move", "send", "find", "clean up") and every question
-    // about "my" things — is something the agent should act on.
-    private let questionStarts = [
-        "what", "what's", "who", "who's", "whos", "why", "how", "when", "where", "which",
-        "is ", "are ", "does ", "do ", "can ", "explain", "define", "tell me about", "tell me a",
-    ]
-
-    private let localContextWords = [
-        " my ", " i ", " me ", " mine", "mac", "computer", "laptop", "file", "folder",
-        "download", "desktop", "document", "screen", "app", "email", "mail", "message",
-        "calendar", "reminder", "note", "photo", "disk", "storage", "memory", "cpu",
-        "wifi", "wi-fi", "bluetooth", "battery", "running", "installed", "open ",
-        "code", "repo", "project", "git", "terminal", "clipboard", "browser", "tab",
-        "this", "that", "it ", "again",
-    ]
-
-    private func looksLikeGeneralQuestion(_ prompt: String) -> Bool {
-        let lower = " " + QuickCommands.normalize(prompt) + " "
-        let trimmed = lower.trimmingCharacters(in: .whitespaces)
-        guard questionStarts.contains(where: { trimmed.hasPrefix($0) }) else { return false }
-        return !localContextWords.contains { lower.contains($0) }
     }
 }
 

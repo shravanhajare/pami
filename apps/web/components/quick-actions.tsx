@@ -1,10 +1,30 @@
 "use client";
 
 import { useState } from "react";
+import {
+  Battery,
+  Bell,
+  CalendarDays,
+  Camera,
+  Check,
+  Clipboard,
+  Lock,
+  MonitorOff,
+  Moon,
+  Music,
+  Pause,
+  Play,
+  Power,
+  SkipBack,
+  SkipForward,
+  StickyNote,
+  Volume1,
+  Volume2,
+  VolumeX,
+  type LucideIcon,
+} from "lucide-react";
+import { cn } from "cn";
 import { createClient } from "@/lib/supabase/client";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
 async function insertTask(
   userId: string,
@@ -19,206 +39,170 @@ async function insertTask(
   });
 }
 
+type Action = { type: string; title: string; prompt?: string; icon: LucideIcon };
+
+// quick_command prompts are the same phrases the Mac's QuickCommands
+// understands by voice, so buttons and speech share one vocabulary.
+const GROUPS: { label: string; actions: Action[] }[] = [
+  {
+    label: "Media",
+    actions: [
+      { type: "music_control", title: "Play", prompt: "play", icon: Play },
+      { type: "music_control", title: "Pause", prompt: "pause", icon: Pause },
+      { type: "quick_command", title: "Previous", prompt: "previous track", icon: SkipBack },
+      { type: "music_control", title: "Next", prompt: "next", icon: SkipForward },
+      { type: "music_control", title: "Now playing", prompt: "now_playing", icon: Music },
+      { type: "quick_command", title: "Volume down", prompt: "volume down", icon: Volume1 },
+      { type: "quick_command", title: "Volume up", prompt: "volume up", icon: Volume2 },
+      { type: "quick_command", title: "Mute", prompt: "mute", icon: VolumeX },
+    ],
+  },
+  {
+    label: "System",
+    actions: [
+      { type: "lock_screen", title: "Lock", icon: Lock },
+      { type: "quick_command", title: "Display off", prompt: "turn off the display", icon: MonitorOff },
+      { type: "quick_command", title: "Sleep", prompt: "sleep", icon: Power },
+      { type: "quick_command", title: "Screenshot", prompt: "take a screenshot", icon: Camera },
+      { type: "quick_command", title: "Dark mode", prompt: "toggle dark mode", icon: Moon },
+      { type: "battery_status", title: "Battery", icon: Battery },
+      { type: "clipboard_get", title: "Clipboard", icon: Clipboard },
+    ],
+  },
+];
+
 export function QuickActions({ userId }: { userId: string }) {
-  const [calendarPending, setCalendarPending] = useState(false);
-  const [noteTitle, setNoteTitle] = useState("");
-  const [noteBody, setNoteBody] = useState("");
-  const [notePending, setNotePending] = useState(false);
-  const [reminderText, setReminderText] = useState("");
-  const [reminderPending, setReminderPending] = useState(false);
-  const [command, setCommand] = useState("");
-  const [commandPending, setCommandPending] = useState(false);
-  const [macActionPending, setMacActionPending] = useState<string | null>(null);
+  const [sent, setSent] = useState<string | null>(null);
 
-  async function runMacAction(type: string, title: string, prompt?: string) {
-    setMacActionPending(title);
-    await insertTask(userId, { type, title, prompt });
-    setMacActionPending(null);
-  }
-
-  async function checkCalendar() {
-    setCalendarPending(true);
-    await insertTask(userId, {
-      type: "calendar_today",
-      title: "What's on my calendar today?",
-    });
-    setCalendarPending(false);
-  }
-
-  async function createNote(e: React.FormEvent) {
-    e.preventDefault();
-    if (!noteTitle.trim()) return;
-    setNotePending(true);
-    await insertTask(userId, {
-      type: "create_note",
-      title: noteTitle,
-      prompt: noteBody,
-    });
-    setNotePending(false);
-    setNoteTitle("");
-    setNoteBody("");
-  }
-
-  async function createReminder(e: React.FormEvent) {
-    e.preventDefault();
-    if (!reminderText.trim()) return;
-    setReminderPending(true);
-    await insertTask(userId, {
-      type: "create_reminder",
-      title: reminderText,
-      prompt: reminderText,
-    });
-    setReminderPending(false);
-    setReminderText("");
-  }
-
-  async function runCommand(e: React.FormEvent) {
-    e.preventDefault();
-    if (!command.trim()) return;
-    setCommandPending(true);
-    await insertTask(userId, {
-      type: "system_command",
-      title: command,
-      prompt: command,
-    });
-    setCommandPending(false);
-    setCommand("");
+  async function run(action: Action) {
+    setSent(action.title);
+    await insertTask(userId, { type: action.type, title: action.title, prompt: action.prompt });
+    setTimeout(() => setSent((current) => (current === action.title ? null : current)), 1200);
   }
 
   return (
-    <div className="grid gap-4 grid-cols-2 lg:grid-cols-4">
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base">Calendar</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={checkCalendar}
-            disabled={calendarPending}
-          >
-            {calendarPending ? "Checking…" : "What's on today?"}
-          </Button>
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base">Notes</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <form onSubmit={createNote} className="flex flex-col gap-2">
-            <Input
-              placeholder="Title"
-              value={noteTitle}
-              onChange={(e) => setNoteTitle(e.target.value)}
-            />
-            <Input
-              placeholder="Content"
-              value={noteBody}
-              onChange={(e) => setNoteBody(e.target.value)}
-            />
-            <Button
-              type="submit"
-              variant="outline"
-              size="sm"
-              disabled={notePending || !noteTitle.trim()}
-            >
-              {notePending ? "Creating…" : "Create note"}
-            </Button>
-          </form>
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base">Reminders</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <form onSubmit={createReminder} className="flex flex-col gap-2">
-            <Input
-              placeholder="Remind me to…"
-              value={reminderText}
-              onChange={(e) => setReminderText(e.target.value)}
-            />
-            <Button
-              type="submit"
-              variant="outline"
-              size="sm"
-              disabled={reminderPending || !reminderText.trim()}
-            >
-              {reminderPending ? "Creating…" : "Create reminder"}
-            </Button>
-          </form>
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base">Run a command</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <form onSubmit={runCommand} className="flex flex-col gap-2">
-            <Input
-              placeholder="e.g. brew upgrade"
-              value={command}
-              onChange={(e) => setCommand(e.target.value)}
-            />
-            <Button
-              type="submit"
-              variant="outline"
-              size="sm"
-              disabled={commandPending || !command.trim()}
-            >
-              {commandPending ? "Sending…" : "Run"}
-            </Button>
-            <p className="text-xs text-muted-foreground">
-              Runs immediately on your Mac, starting in your home folder.
-            </p>
-          </form>
-        </CardContent>
-      </Card>
-
-      <Card className="col-span-2 lg:col-span-4">
-        <CardHeader>
-          <CardTitle className="text-base">Mac control</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-            {[
-              { type: "lock_screen", title: "Lock screen" },
-              { type: "battery_status", title: "Battery status" },
-              { type: "clipboard_get", title: "Read clipboard" },
-              { type: "music_control", title: "Now playing", prompt: "now_playing" },
-              { type: "music_control", title: "Play", prompt: "play" },
-              { type: "music_control", title: "Pause", prompt: "pause" },
-              { type: "music_control", title: "Next track", prompt: "next" },
-              { type: "volume_set", title: "Volume 50%", prompt: "50" },
-              // quick_command prompts are the same phrases the Mac's
-              // QuickCommands understands by voice.
-              { type: "quick_command", title: "Mute", prompt: "mute" },
-              { type: "quick_command", title: "Volume up", prompt: "volume up" },
-              { type: "quick_command", title: "Volume down", prompt: "volume down" },
-              { type: "quick_command", title: "Previous track", prompt: "previous track" },
-              { type: "quick_command", title: "Screenshot", prompt: "take a screenshot" },
-              { type: "quick_command", title: "Display off", prompt: "turn off the display" },
-              { type: "quick_command", title: "Toggle dark mode", prompt: "toggle dark mode" },
-              { type: "quick_command", title: "Sleep Mac", prompt: "sleep" },
-            ].map((action) => (
-              <Button
-                key={`${action.type}-${action.title}`}
-                variant="outline"
-                size="sm"
-                disabled={macActionPending !== null}
-                onClick={() => runMacAction(action.type, action.title, action.prompt)}
-              >
-                {macActionPending === action.title ? "Sending…" : action.title}
-              </Button>
-            ))}
+    <div className="flex flex-col gap-4">
+      {GROUPS.map((group) => (
+        <section key={group.label} className="flex flex-col gap-2">
+          <h2 className="text-sm font-medium text-muted-foreground">{group.label}</h2>
+          <div className="grid grid-cols-4 gap-2 sm:grid-cols-8">
+            {group.actions.map((action) => {
+              const Icon = sent === action.title ? Check : action.icon;
+              return (
+                <button
+                  key={action.title}
+                  onClick={() => run(action)}
+                  className={cn(
+                    "flex flex-col items-center gap-1.5 rounded-xl border bg-card/60 px-1 py-3 text-[11px] font-medium text-muted-foreground transition-all hover:border-primary/40 hover:text-foreground active:scale-95",
+                    sent === action.title && "border-primary/50 text-primary",
+                  )}
+                >
+                  <Icon className="size-5" />
+                  <span className="truncate">{action.title}</span>
+                </button>
+              );
+            })}
           </div>
-        </CardContent>
-      </Card>
+        </section>
+      ))}
+
+      <AppleApps userId={userId} />
     </div>
+  );
+}
+
+type AppTab = "calendar" | "note" | "reminder";
+
+function AppleApps({ userId }: { userId: string }) {
+  const [tab, setTab] = useState<AppTab>("reminder");
+  const [title, setTitle] = useState("");
+  const [body, setBody] = useState("");
+  const [pending, setPending] = useState(false);
+  const [done, setDone] = useState<string | null>(null);
+
+  async function submit(e: React.FormEvent) {
+    e.preventDefault();
+    setPending(true);
+    if (tab === "calendar") {
+      await insertTask(userId, { type: "calendar_today", title: "What's on my calendar today?" });
+      setDone("Asked your Mac — the answer will appear in Tasks.");
+    } else if (tab === "note") {
+      if (!title.trim()) return setPending(false);
+      await insertTask(userId, { type: "create_note", title, prompt: body });
+      setDone(`Note "${title}" sent to your Mac.`);
+    } else {
+      if (!title.trim()) return setPending(false);
+      await insertTask(userId, { type: "create_reminder", title, prompt: title });
+      setDone(`Reminder "${title}" sent to your Mac.`);
+    }
+    setPending(false);
+    setTitle("");
+    setBody("");
+  }
+
+  const tabs: { id: AppTab; label: string; icon: LucideIcon }[] = [
+    { id: "reminder", label: "Reminder", icon: Bell },
+    { id: "note", label: "Note", icon: StickyNote },
+    { id: "calendar", label: "Calendar", icon: CalendarDays },
+  ];
+
+  return (
+    <section className="flex flex-col gap-2">
+      <h2 className="text-sm font-medium text-muted-foreground">Apple apps</h2>
+      <div className="rounded-xl border bg-card/60 p-3">
+        <div className="mb-3 flex gap-1 rounded-lg bg-muted p-1">
+          {tabs.map((t) => (
+            <button
+              key={t.id}
+              onClick={() => {
+                setTab(t.id);
+                setDone(null);
+              }}
+              className={cn(
+                "flex flex-1 items-center justify-center gap-1.5 rounded-md py-1.5 text-xs font-medium text-muted-foreground transition-colors",
+                tab === t.id && "bg-background text-foreground shadow-sm",
+              )}
+            >
+              <t.icon className="size-3.5" />
+              {t.label}
+            </button>
+          ))}
+        </div>
+
+        <form onSubmit={submit} className="flex flex-col gap-2">
+          {tab !== "calendar" && (
+            <input
+              value={title}
+              onChange={(e) => setTitle(e.target.value)}
+              placeholder={tab === "reminder" ? "Remind me to…" : "Note title"}
+              className="h-9 rounded-lg border bg-background/50 px-3 text-sm outline-none focus:border-primary/50"
+            />
+          )}
+          {tab === "note" && (
+            <textarea
+              value={body}
+              onChange={(e) => setBody(e.target.value)}
+              placeholder="Write something…"
+              rows={3}
+              className="resize-none rounded-lg border bg-background/50 px-3 py-2 text-sm outline-none focus:border-primary/50"
+            />
+          )}
+          <button
+            type="submit"
+            disabled={pending || (tab !== "calendar" && !title.trim())}
+            className="h-9 rounded-lg bg-primary text-sm font-medium text-primary-foreground transition-opacity hover:opacity-90 disabled:opacity-40"
+          >
+            {pending
+              ? "Sending…"
+              : tab === "calendar"
+                ? "What's on today?"
+                : tab === "note"
+                  ? "Create note"
+                  : "Add reminder"}
+          </button>
+          {done && <p className="text-xs text-muted-foreground">{done}</p>}
+        </form>
+      </div>
+    </section>
   );
 }
