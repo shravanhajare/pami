@@ -72,12 +72,34 @@ struct MenuContent: View {
             ))
         }
 
+        Menu("Full Mac Access") {
+            ForEach(Permissions.Kind.allCases, id: \.self) { kind in
+                Button("\(statusMark(kind.isGranted)) \(kind.title)") {
+                    kind.request()
+                }
+            }
+            Divider()
+            Button("New Conversation (forget context)") {
+                ClaudeCodeProvider.resetConversation()
+            }
+        }
+
+        // The kill switch for full access: paused, PAMI stops picking up
+        // tasks entirely (see HeartbeatLoop).
         Toggle("Pause PAMI", isOn: $appState.isPaused)
 
         Divider()
 
         Button("Quit") {
             NSApplication.shared.terminate(nil)
+        }
+    }
+
+    private func statusMark(_ granted: Bool?) -> String {
+        switch granted {
+        case .some(true): return "✓"
+        case .some(false): return "○"
+        case .none: return "•"
         }
     }
 

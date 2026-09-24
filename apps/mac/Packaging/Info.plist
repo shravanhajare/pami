@@ -24,6 +24,8 @@
     <string>Personal use only.</string>
     <key>NSMicrophoneUsageDescription</key>
     <string>PAMI uses your microphone to capture voice requests when you click Voice Mode.</string>
+    <key>NSAppleEventsUsageDescription</key>
+    <string>PAMI controls your apps (Music, Finder, Safari, Notes and more) to carry out your requests.</string>
     <key>NSSpeechRecognitionUsageDescription</key>
     <string>PAMI transcribes your voice requests locally to turn them into tasks.</string>
 </dict>

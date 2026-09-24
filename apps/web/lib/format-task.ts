@@ -17,6 +17,7 @@ const TYPE_LABELS: Record<string, string> = {
   clipboard_set: "Clipboard",
   quit_app: "Quit app",
   battery_status: "Battery",
+  quick_command: "Mac control",
 };
 
 export function formatTaskType(type: string): string {

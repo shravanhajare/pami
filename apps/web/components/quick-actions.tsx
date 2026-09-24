@@ -161,7 +161,7 @@ export function QuickActions({ userId }: { userId: string }) {
         <CardContent>
           <form onSubmit={runCommand} className="flex flex-col gap-2">
             <Input
-              placeholder="e.g. git status"
+              placeholder="e.g. brew upgrade"
               value={command}
               onChange={(e) => setCommand(e.target.value)}
             />
@@ -174,8 +174,7 @@ export function QuickActions({ userId }: { userId: string }) {
               {commandPending ? "Sending…" : "Run"}
             </Button>
             <p className="text-xs text-muted-foreground">
-              Read-only commands run immediately. Anything else needs your
-              approval below first.
+              Runs immediately on your Mac, starting in your home folder.
             </p>
           </form>
         </CardContent>
@@ -196,6 +195,16 @@ export function QuickActions({ userId }: { userId: string }) {
               { type: "music_control", title: "Pause", prompt: "pause" },
               { type: "music_control", title: "Next track", prompt: "next" },
               { type: "volume_set", title: "Volume 50%", prompt: "50" },
+              // quick_command prompts are the same phrases the Mac's
+              // QuickCommands understands by voice.
+              { type: "quick_command", title: "Mute", prompt: "mute" },
+              { type: "quick_command", title: "Volume up", prompt: "volume up" },
+              { type: "quick_command", title: "Volume down", prompt: "volume down" },
+              { type: "quick_command", title: "Previous track", prompt: "previous track" },
+              { type: "quick_command", title: "Screenshot", prompt: "take a screenshot" },
+              { type: "quick_command", title: "Display off", prompt: "turn off the display" },
+              { type: "quick_command", title: "Toggle dark mode", prompt: "toggle dark mode" },
+              { type: "quick_command", title: "Sleep Mac", prompt: "sleep" },
             ].map((action) => (
               <Button
                 key={`${action.type}-${action.title}`}

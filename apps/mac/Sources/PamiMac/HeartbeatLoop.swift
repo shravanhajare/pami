@@ -8,6 +8,24 @@ actor HeartbeatLoop {
     private let api = PamiAPI()
     private var backoff: TimeInterval = 5
     private var running = false
+    private var lastActivity = Date.distantPast
+
+    // The between-heartbeat wait, held so poke() can cut it short — a task
+    // created on this Mac (voice) gets picked up immediately instead of
+    // sitting until the next scheduled poll.
+    private var sleeper: Task<Void, Never>?
+
+    private func nap(seconds: TimeInterval) async {
+        let task = Task<Void, Never> { try? await Task.sleep(for: .seconds(seconds)) }
+        sleeper = task
+        await task.value
+        sleeper = nil
+    }
+
+    func poke() {
+        lastActivity = Date()
+        sleeper?.cancel()
+    }
 
     // The in-flight execute(task:) for a voice-originated "ask" — tracked
     // so the overlay's Cancel button (during the "Thinking…" phase) has
@@ -46,7 +64,11 @@ actor HeartbeatLoop {
                 backoff = 5
                 await MainActor.run { appState.apply(result) }
 
-                for task in result.tasks {
+                // Paused = kill switch: keep heartbeating (so the dashboard
+                // shows "paused") but leave every task untouched in the
+                // queue until resumed.
+                let paused = await appState.isPaused
+                for task in result.tasks where !paused {
                     if task.status == "pending" {
                         await handle(task: task, deviceToken: token)
                     } else if task.status == "waiting_for_approval", let decision = task.approval_decision {
@@ -55,7 +77,11 @@ actor HeartbeatLoop {
                 }
 
                 let pending = result.status == "pending"
-                try await Task.sleep(for: .seconds(pending ? 2 : 20))
+                // Snappy while the user is actively sending things, relaxed
+                // when idle (keeps Edge Function invocations reasonable).
+                if !result.tasks.isEmpty { lastActivity = Date() }
+                let recentlyActive = Date().timeIntervalSince(lastActivity) < 120
+                await nap(seconds: pending ? 2 : (recentlyActive ? 3 : 10))
             } catch {
                 await MainActor.run { appState.connectionState = .reconnecting }
                 try? await Task.sleep(for: .seconds(backoff))
@@ -102,33 +128,20 @@ actor HeartbeatLoop {
         guard let token = await appState.deviceToken else { return }
         let title = prompt.count > 60 ? String(prompt.prefix(57)) + "..." : prompt
         try await api.createTask(deviceToken: token, title: title, type: "ask", prompt: prompt)
+        poke()
     }
 
     // Routes each task by type: structured Apple-app actions run directly
-    // via AppleScript (MacIntegrations), free-text "ask" is delegated to
-    // Claude Code (see ClaudeCodeProvider for why tool use is disabled
-    // there), "system_command" runs immediately only if it's on the
-    // read-only allowlist and otherwise waits for a dashboard approval
-    // (see handleApprovalResolution), and anything else (e.g.
+    // via AppleScript (MacIntegrations), free-text "ask" goes through
+    // QuickCommands and then the full-access Claude Code agent,
+    // "system_command" runs immediately with no approval step (older
+    // tasks still parked in waiting_for_approval are resolved by
+    // handleApprovalResolution), and anything else (e.g.
     // "manual_activation") has no further action defined yet, so it's
     // marked completed immediately rather than left to rot as
     // "acknowledged".
     private func handle(task: PamiTask, deviceToken: String) async {
         try? await api.ackTask(deviceToken: deviceToken, taskId: task.id, status: "acknowledged")
-
-        if task.type == "system_command", let command = task.prompt, !SystemTools.isReadOnly(command: command) {
-            do {
-                try await api.requestApproval(deviceToken: deviceToken, taskId: task.id, command: command)
-            } catch {
-                try? await api.ackTask(
-                    deviceToken: deviceToken,
-                    taskId: task.id,
-                    status: "failed",
-                    result: "Could not request approval: \(error.localizedDescription)",
-                )
-            }
-            return
-        }
 
         let voiceTaskInFlight = await AppState.shared.voiceTaskInFlight
         let isVoiceOriginated = task.type == "ask" && voiceTaskInFlight
@@ -224,36 +237,29 @@ actor HeartbeatLoop {
             guard let prompt = task.prompt, !prompt.isEmpty else {
                 return "No prompt provided."
             }
-            // "Open X" is a real action, not something a tool-less LLM can
-            // actually do — try it as an app-launch request first, and only
-            // fall through to Claude Code if it doesn't look like one.
-            if let appName = try? AppLauncher.extractAppName(from: prompt) {
-                return try AppLauncher.open(appName: appName)
+            // Everyday commands ("mute", "next song", "open YouTube", "lock
+            // my Mac") are answered instantly by QuickCommands; only what it
+            // doesn't recognize goes on to an LLM.
+            if let result = try await QuickCommands.handle(prompt) {
+                return result
             }
-            // Per the user's own routing preference: Claude Code (their paid
-            // subscription) is reserved for actual development work; general
-            // Q&A goes to the free OpenCode/NVIDIA route instead.
-            if looksLikeDevelopmentRequest(prompt) {
-                return try await ClaudeCodeProvider.run(prompt: prompt)
+            // Only pure general-knowledge questions ("what's the capital of
+            // France") go to the free, tool-less OpenCode route — anything
+            // that should *happen* on this Mac needs the Claude Code agent.
+            if looksLikeGeneralQuestion(prompt) {
+                // The free NVIDIA route has turned out to be unreliable, so
+                // give it a bounded window and fall back to the agent.
+                do {
+                    return try await withTimeout(seconds: 20) {
+                        try await OpenCodeProvider.run(prompt: prompt)
+                    }
+                } catch is CancellationError {
+                    // A genuine cancel (the overlay's Cancel button) — not a
+                    // timeout, so don't retry via Claude Code.
+                    throw CancellationError()
+                } catch {}
             }
-            // The free NVIDIA route has turned out to be unreliable — one
-            // request hung for 3 minutes before failing with a network
-            // error. A "conversational" assistant that sometimes takes
-            // minutes (or never responds) isn't acceptable, so give it a
-            // bounded window and fall back to Claude Code if it blows past
-            // that — still free-first when it behaves, but reliable either way.
-            do {
-                return try await withTimeout(seconds: 20) {
-                    try await OpenCodeProvider.run(prompt: prompt)
-                }
-            } catch is CancellationError {
-                // A genuine cancel (the overlay's Cancel button) — not a
-                // timeout, so don't retry via Claude Code, just propagate
-                // it so the caller can tell "cancelled" apart from "failed".
-                throw CancellationError()
-            } catch {
-                return try await ClaudeCodeProvider.run(prompt: prompt)
-            }
+            return try await runAgent(prompt: prompt)
 
         case "calendar_today":
             return try MacIntegrations.todayEvents()
@@ -266,7 +272,7 @@ actor HeartbeatLoop {
 
         case "system_command":
             guard let command = task.prompt else { return "No command provided." }
-            return try await SystemTools.runCommand(command) // only reached when isReadOnly() already passed
+            return try await SystemTools.runCommand(command)
 
         case "lock_screen":
             return try MacControl.lockScreen()
@@ -297,27 +303,56 @@ actor HeartbeatLoop {
         case "battery_status":
             return try await MacControl.batteryStatus()
 
+        // Dashboard shortcut buttons — the same phrases QuickCommands
+        // understands by voice, so both surfaces share one vocabulary.
+        case "quick_command":
+            let phrase = task.prompt ?? task.title
+            guard let result = try await QuickCommands.handle(phrase) else {
+                return "Didn't recognize \"\(phrase)\"."
+            }
+            return result
+
         default:
             return "PAMI activated on \(DeviceIdentity.deviceName)."
         }
     }
 
-    // A keyword heuristic, not real intent classification — good enough to
-    // route the obvious "help me code/debug/build something" requests to
-    // Claude Code while everything else (general questions, "what's the
-    // capital of France", etc.) goes to the free OpenCode route.
-    private let developmentKeywords = [
-        "code", "coding", "bug", "debug", "function", "implement", "refactor",
-        "compile", "repo", "repository", "git ", "commit", "pull request",
-        "merge conflict", "npm ", "python", "swift", "javascript",
-        "typescript", "api", "database", "sql", "script", "programming",
-        "class ", "variable", "algorithm", "regex", "unit test",
-        "stack trace", "build error", "xcode", "terminal command",
+    // Agent runs are capped so one stuck request can't block the task
+    // queue (and heartbeats) forever; cancellation terminates the CLI.
+    private func runAgent(prompt: String) async throws -> String {
+        do {
+            return try await withTimeout(seconds: 10 * 60) {
+                try await ClaudeCodeProvider.run(prompt: prompt)
+            }
+        } catch is TimeoutError {
+            throw ClaudeCodeProvider.AgentError(message: "That took longer than 10 minutes, so I stopped it.")
+        }
+    }
+
+    // A keyword heuristic, not real intent classification: a question
+    // ("what/who/why/how…") that doesn't mention anything on this Mac or
+    // the user's own stuff is general knowledge; everything else — every
+    // imperative ("move", "send", "find", "clean up") and every question
+    // about "my" things — is something the agent should act on.
+    private let questionStarts = [
+        "what", "what's", "who", "who's", "whos", "why", "how", "when", "where", "which",
+        "is ", "are ", "does ", "do ", "can ", "explain", "define", "tell me about", "tell me a",
     ]
 
-    private func looksLikeDevelopmentRequest(_ prompt: String) -> Bool {
-        let lower = prompt.lowercased()
-        return developmentKeywords.contains { lower.contains($0) }
+    private let localContextWords = [
+        " my ", " i ", " me ", " mine", "mac", "computer", "laptop", "file", "folder",
+        "download", "desktop", "document", "screen", "app", "email", "mail", "message",
+        "calendar", "reminder", "note", "photo", "disk", "storage", "memory", "cpu",
+        "wifi", "wi-fi", "bluetooth", "battery", "running", "installed", "open ",
+        "code", "repo", "project", "git", "terminal", "clipboard", "browser", "tab",
+        "this", "that", "it ", "again",
+    ]
+
+    private func looksLikeGeneralQuestion(_ prompt: String) -> Bool {
+        let lower = " " + QuickCommands.normalize(prompt) + " "
+        let trimmed = lower.trimmingCharacters(in: .whitespaces)
+        guard questionStarts.contains(where: { trimmed.hasPrefix($0) }) else { return false }
+        return !localContextWords.contains { lower.contains($0) }
     }
 }
 

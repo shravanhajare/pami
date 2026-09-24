@@ -102,7 +102,7 @@ export function AskPamiForm({ userId }: { userId: string }) {
     <form onSubmit={handleSubmit} className="flex flex-col gap-2">
       <div className="flex gap-2">
         <Input
-          placeholder="Ask PAMI anything…"
+          placeholder="Tell PAMI to do anything on your Mac…"
           value={text}
           onChange={(e) => setText(e.target.value)}
           className="flex-1"

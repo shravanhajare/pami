@@ -33,15 +33,34 @@ enum ProcessRunner {
         func get() -> Bool { lock.lock(); defer { lock.unlock() }; return value }
     }
 
-    static func run(executable: String, arguments: [String]) async throws -> String {
+    // An app launched from Finder/login items inherits launchd's bare
+    // PATH (/usr/bin:/bin:/usr/sbin:/sbin), so Homebrew-installed tools
+    // (node, git from brew, python, etc.) would be invisible to anything
+    // the agent runs — prepend the usual install locations.
+    static let fullEnvironment: [String: String] = {
+        var env = ProcessInfo.processInfo.environment
+        let home = FileManager.default.homeDirectoryForCurrentUser.path
+        let extra = ["/opt/homebrew/bin", "/opt/homebrew/sbin", "/usr/local/bin", "\(home)/.local/bin", "\(home)/.bun/bin", "\(home)/.cargo/bin"]
+        env["PATH"] = (extra + [env["PATH"] ?? "/usr/bin:/bin:/usr/sbin:/sbin"]).joined(separator: ":")
+        return env
+    }()
+
+    static func run(executable: String, arguments: [String], currentDirectory: URL? = nil) async throws -> String {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: executable)
         process.arguments = arguments
+        process.environment = fullEnvironment
+        if let currentDirectory {
+            process.currentDirectoryURL = currentDirectory
+        }
 
         let stdout = Pipe()
         let stderr = Pipe()
         process.standardOutput = stdout
         process.standardError = stderr
+        // Headless CLIs like `claude -p` read stdin when it isn't a TTY —
+        // an inherited-but-never-closed stdin would make them wait forever.
+        process.standardInput = FileHandle.nullDevice
 
         let cancelFlag = CancelFlag()
 
@@ -55,15 +74,27 @@ enum ProcessRunner {
                         return
                     }
 
+                    if cancelFlag.get() { process.terminate() }
+
+                    // Drained on its own thread: reading stderr only after
+                    // stdout hits EOF deadlocks once a chatty child fills
+                    // the ~64KB stderr pipe buffer and blocks on write.
+                    var errData = Data()
+                    let errDone = DispatchSemaphore(value: 0)
+                    DispatchQueue.global(qos: .utility).async {
+                        errData = stderr.fileHandleForReading.readDataToEndOfFile()
+                        errDone.signal()
+                    }
+
                     let outputData = stdout.fileHandleForReading.readDataToEndOfFile()
                     process.waitUntilExit()
+                    errDone.wait()
 
                     if process.terminationStatus != 0 {
                         if cancelFlag.get() {
                             continuation.resume(throwing: CancellationError())
                             return
                         }
-                        let errData = stderr.fileHandleForReading.readDataToEndOfFile()
                         let message = String(data: errData, encoding: .utf8) ?? ""
                         continuation.resume(throwing: ExecutionError(
                             exitCode: process.terminationStatus,
@@ -78,7 +109,9 @@ enum ProcessRunner {
             }
         } onCancel: {
             cancelFlag.set()
-            process.terminate()
+            // terminate() on a not-yet-launched Process raises an ObjC
+            // exception; the post-launch flag check above covers that case.
+            if process.isRunning { process.terminate() }
         }
     }
 }
