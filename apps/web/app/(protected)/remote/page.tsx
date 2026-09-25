@@ -1,5 +1,6 @@
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
+import { PageHeader } from "@/components/page-header";
 import { RemoteDesktopCard } from "@/components/remote-desktop-card";
 
 export default async function RemotePage() {
@@ -20,12 +21,7 @@ export default async function RemotePage() {
 
   return (
     <div className="flex flex-col gap-6">
-      <div>
-        <h1 className="text-2xl font-semibold tracking-tight">Remote</h1>
-        <p className="text-muted-foreground">
-          See and control your Mac&rsquo;s screen from here.
-        </p>
-      </div>
+      <PageHeader title="Remote" subtitle="See and control your Mac’s screen from here." />
 
       <RemoteDesktopCard userId={user.id} initialDevices={devices ?? []} />
     </div>

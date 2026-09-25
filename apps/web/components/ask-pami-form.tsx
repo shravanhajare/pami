@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { ArrowUp, Mic, Square, Terminal } from "lucide-react";
 import { cn } from "cn";
 import { createClient } from "@/lib/supabase/client";
@@ -26,6 +26,8 @@ interface SpeechRecognitionLike extends EventTarget {
   onend: (() => void) | null;
 }
 type SpeechRecognitionCtor = new () => SpeechRecognitionLike;
+
+const noopSubscribe = () => () => {};
 
 function getSpeechRecognitionCtor(): SpeechRecognitionCtor | null {
   if (typeof window === "undefined") return null;
@@ -74,13 +76,13 @@ export function AskPamiForm({
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [listening, setListening] = useState(false);
-  const [speechSupported, setSpeechSupported] = useState(false);
+  const speechSupported = useSyncExternalStore(
+    noopSubscribe,
+    () => getSpeechRecognitionCtor() !== null,
+    () => false,
+  );
   const recognitionRef = useRef<SpeechRecognitionLike | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
-
-  useEffect(() => {
-    setSpeechSupported(getSpeechRecognitionCtor() !== null);
-  }, []);
 
   // Grow with the content up to ~6 lines, then scroll inside.
   useEffect(() => {
@@ -140,12 +142,12 @@ export function AskPamiForm({
     >
       <div
         className={cn(
-          "pami-glass flex items-end gap-2 rounded-2xl p-2 shadow-lg shadow-black/20 transition-colors focus-within:border-primary/40",
-          isCommand && "focus-within:border-emerald-400/40",
+          "liquid-glass flex items-end gap-1 rounded-[24px] p-1.5 pl-2 transition-shadow focus-within:ring-1 focus-within:ring-tint/40",
+          isCommand && "focus-within:ring-ios-green/50",
         )}
       >
         {isCommand && (
-          <span className="mb-1.5 ml-1 flex shrink-0 items-center gap-1 rounded-md bg-emerald-500/15 px-1.5 py-0.5 text-[11px] font-medium text-emerald-300">
+          <span className="mb-2 ml-1 flex shrink-0 items-center gap-1 rounded-full bg-ios-green/15 px-2 py-0.5 text-[11px] font-semibold text-ios-green">
             <Terminal className="size-3" />
             Shell
           </span>
@@ -155,8 +157,14 @@ export function AskPamiForm({
           rows={1}
           autoFocus={autoFocus}
           value={text}
-          placeholder="Tell PAMI what to do on your Mac…"
+          placeholder="Message PAMI"
           aria-label="Message PAMI"
+          enterKeyHint="send"
+          // Shell commands are case- and punctuation-exact; don't let iOS
+          // "fix" `ls -la` into "Is -la".
+          autoCapitalize={isCommand ? "off" : "sentences"}
+          autoCorrect={isCommand ? "off" : "on"}
+          spellCheck={!isCommand}
           onChange={(e) => setText(e.target.value)}
           onKeyDown={(e) => {
             if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
@@ -165,42 +173,41 @@ export function AskPamiForm({
             }
           }}
           className={cn(
-            "min-h-9 flex-1 resize-none bg-transparent px-2 py-2 text-[15px] leading-5 outline-none placeholder:text-muted-foreground",
-            isCommand && "font-mono text-sm",
+            "min-h-10 flex-1 resize-none bg-transparent px-2 py-[9px] text-[17px] leading-[22px] outline-none placeholder:text-muted-foreground",
+            isCommand && "font-mono text-[15px]",
           )}
         />
-        {speechSupported && (
+        {speechSupported && !text.trim() ? (
           <button
             type="button"
             aria-label={listening ? "Stop listening" : "Speak your request"}
             onClick={toggleListening}
             className={cn(
-              "flex size-9 shrink-0 items-center justify-center rounded-xl text-muted-foreground transition-colors hover:bg-accent hover:text-foreground",
-              listening && "pami-gradient text-primary-foreground hover:text-primary-foreground",
+              "flex size-10 shrink-0 items-center justify-center rounded-full text-muted-foreground transition-colors active:bg-fill",
+              listening && "pami-gradient text-black",
             )}
           >
-            {listening ? <Square className="size-3.5 fill-current" /> : <Mic className="size-4.5" />}
+            {listening ? <Square className="size-3.5 fill-current" /> : <Mic className="size-5" />}
+          </button>
+        ) : (
+          <button
+            type="submit"
+            aria-label="Send"
+            disabled={pending || !text.trim()}
+            className="flex size-10 shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground transition-all active:scale-90 disabled:bg-fill disabled:text-muted-foreground"
+          >
+            <ArrowUp className="size-5" strokeWidth={2.75} />
           </button>
         )}
-        <button
-          type="submit"
-          aria-label="Send"
-          disabled={pending || !text.trim()}
-          className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-primary text-primary-foreground transition-all hover:opacity-90 active:scale-95 disabled:opacity-30"
-        >
-          <ArrowUp className="size-4.5" strokeWidth={2.5} />
-        </button>
       </div>
-      <p className="px-3 text-[11px] text-muted-foreground">
-        {error ? (
-          <span className="text-destructive">{error}</span>
-        ) : (
-          <>
-            <kbd className="font-sans">Enter</kbd> to send · start with{" "}
-            <code className="rounded bg-muted px-1">$</code> to run a shell command
-          </>
-        )}
-      </p>
+      {error ? (
+        <p className="px-4 text-[13px] text-destructive">{error}</p>
+      ) : (
+        <p className="hidden px-4 text-[11px] text-muted-foreground sm:block">
+          <kbd className="font-sans">Enter</kbd> to send · start with{" "}
+          <code className="rounded bg-fill px-1 font-mono">$</code> to run a shell command
+        </p>
+      )}
     </form>
   );
 }

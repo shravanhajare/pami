@@ -1,14 +1,18 @@
-import Link from "next/link";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
+import { AppHeader } from "@/components/app-header";
+import { LiveActivityProvider } from "@/components/live-activity";
 import { MobileTabBar } from "@/components/mobile-tab-bar";
+import { ResumeRefresh } from "@/components/resume-refresh";
 
+// `label` is the tab name, `title` what the compact nav bar shows once
+// the page's large title scrolls away.
 const NAV_LINKS = [
-  { href: "/dashboard", label: "Dashboard" },
-  { href: "/tasks", label: "Tasks" },
-  { href: "/mac", label: "Mac" },
-  { href: "/remote", label: "Remote" },
-  { href: "/settings", label: "Settings" },
+  { href: "/dashboard", label: "Home", title: "Home" },
+  { href: "/tasks", label: "Tasks", title: "Tasks" },
+  { href: "/mac", label: "Mac", title: "Mac" },
+  { href: "/remote", label: "Remote", title: "Remote" },
+  { href: "/settings", label: "Settings", title: "Settings" },
 ];
 
 export default async function ProtectedLayout({
@@ -26,37 +30,17 @@ export default async function ProtectedLayout({
   if (!user) redirect("/login");
 
   return (
-    <div className="flex flex-1 flex-col">
-      <header
-        className="pami-glass sticky top-0 z-10 flex items-center justify-between px-4 py-3 sm:px-6"
-        style={{ paddingTop: "max(0.75rem, env(safe-area-inset-top))" }}
-      >
-        <Link href="/dashboard" className="flex items-center gap-2 font-semibold tracking-tight">
-          <span className="pami-gradient flex size-7 items-center justify-center rounded-lg text-sm text-white">
-            P
-          </span>
-          PAMI
-        </Link>
-        {/* Full nav in the header on wider screens; small screens get the
-            bottom tab bar instead, so this would just be redundant there. */}
-        <nav className="hidden gap-1 text-sm sm:flex">
-          {NAV_LINKS.map((link) => (
-            <Link
-              key={link.href}
-              href={link.href}
-              className="rounded-md px-3 py-1.5 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
-            >
-              {link.label}
-            </Link>
-          ))}
-        </nav>
-      </header>
+    <LiveActivityProvider userId={user.id}>
+      <div className="flex flex-1 flex-col">
+        <AppHeader links={NAV_LINKS} />
 
-      <main className="mx-auto flex w-full max-w-3xl flex-1 flex-col px-4 py-6 pb-24 sm:px-6 sm:py-8 sm:pb-8">
-        {children}
-      </main>
+        <main className="mx-auto flex w-full max-w-3xl flex-1 flex-col px-4 pt-1 pb-[calc(var(--tabbar-space)+1.5rem)] sm:px-6 sm:pt-6">
+          {children}
+        </main>
 
-      <MobileTabBar links={NAV_LINKS} />
-    </div>
+        <MobileTabBar links={NAV_LINKS} />
+        <ResumeRefresh />
+      </div>
+    </LiveActivityProvider>
   );
 }

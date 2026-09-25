@@ -2,7 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
-import { Button } from "@/components/ui/button";
+import { ListButtonRow } from "@/components/ui/list";
 
 export function SignOutButton() {
   const router = useRouter();
@@ -15,8 +15,10 @@ export function SignOutButton() {
   }
 
   return (
-    <Button variant="outline" onClick={handleSignOut}>
-      Sign out
-    </Button>
+    <ListButtonRow
+      destructive
+      title={<span className="block text-center">Sign Out</span>}
+      onClick={handleSignOut}
+    />
   );
 }

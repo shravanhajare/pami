@@ -1,28 +1,34 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useSyncExternalStore } from "react";
+import { Bell } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { Switch } from "@/components/ui/switch";
-import { Label } from "@/components/ui/label";
+import { IconBadge, ListRow } from "@/components/ui/list";
 import { isPushSupported, urlBase64ToUint8Array } from "@/lib/push";
 
 const VAPID_PUBLIC_KEY = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY;
 
+const noopSubscribe = () => () => {};
+
 export function PushSettingsForm({ userId }: { userId: string }) {
-  const [supported, setSupported] = useState(false);
+  const supported = useSyncExternalStore(
+    noopSubscribe,
+    () => isPushSupported() && !!VAPID_PUBLIC_KEY,
+    () => false,
+  );
   const [enabled, setEnabled] = useState(false);
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!isPushSupported() || !VAPID_PUBLIC_KEY) return;
-    setSupported(true);
+    if (!supported) return;
 
     navigator.serviceWorker.register("/sw.js").then(async (registration) => {
       const existing = await registration.pushManager.getSubscription();
       setEnabled(existing !== null);
     });
-  }, []);
+  }, [supported]);
 
   async function handleChange(next: boolean) {
     setPending(true);
@@ -76,33 +82,26 @@ export function PushSettingsForm({ userId }: { userId: string }) {
     setPending(false);
   }
 
-  if (!supported) {
-    return (
-      <p className="text-sm text-muted-foreground">
-        Push notifications aren&rsquo;t supported in this browser. On iPhone, add PAMI to your
-        Home Screen first (Share → Add to Home Screen), then open it from there.
-      </p>
-    );
-  }
-
   return (
-    <div className="flex flex-col gap-2">
-      <div className="flex items-center justify-between gap-4">
-        <div>
-          <Label htmlFor="push-notifications">Push notifications for approvals</Label>
-          <p className="text-sm text-muted-foreground">
-            Get notified on this device the moment PAMI needs your approval for something on the
-            Mac.
-          </p>
-        </div>
-        <Switch
-          id="push-notifications"
-          checked={enabled}
-          disabled={pending}
-          onCheckedChange={handleChange}
-        />
-      </div>
-      {error && <p className="text-sm text-destructive">{error}</p>}
-    </div>
+    <>
+      <ListRow
+        icon={<IconBadge icon={Bell} className="bg-ios-red" />}
+        title={<label htmlFor="push-notifications">Approval Alerts</label>}
+        subtitle={
+          supported
+            ? undefined
+            : "Not available in this browser. On iPhone, add PAMI to your Home Screen (Share → Add to Home Screen) and open it from there."
+        }
+        detail={
+          <Switch
+            id="push-notifications"
+            checked={enabled}
+            disabled={!supported || pending}
+            onCheckedChange={handleChange}
+          />
+        }
+      />
+      {error && <ListRow title={<span className="text-[15px] text-destructive">{error}</span>} />}
+    </>
   );
 }

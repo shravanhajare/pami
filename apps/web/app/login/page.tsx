@@ -3,17 +3,6 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
-
 
 export default function LoginPage() {
   const router = useRouter();
@@ -42,56 +31,66 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="flex flex-1 items-center justify-center px-6 py-16">
+    <div
+      className="flex flex-1 items-center justify-center px-5 py-16"
+      style={{ paddingTop: "max(4rem, env(safe-area-inset-top))" }}
+    >
       <div className="w-full max-w-sm">
-        <div className="mb-8 flex flex-col items-center gap-3 text-center">
-          <div className="pami-gradient flex size-14 items-center justify-center rounded-2xl shadow-lg shadow-purple-500/20">
-            <span className="text-xl font-semibold text-white">P</span>
+        <div className="mb-9 flex flex-col items-center gap-4 text-center">
+          <div className="pami-gradient flex size-20 items-center justify-center rounded-[22px] shadow-xl shadow-black/50">
+            <span className="text-[34px] font-bold text-black">P</span>
           </div>
-          <h1 className="text-2xl font-semibold tracking-tight">PAMI</h1>
-          <p className="text-sm text-muted-foreground">
-            Your personal AI agent.
-          </p>
+          <div>
+            <h1 className="text-[28px] leading-tight font-bold tracking-tight">Sign in to PAMI</h1>
+            <p className="mt-1 text-[15px] text-muted-foreground">Your personal AI agent, on your Mac.</p>
+          </div>
         </div>
 
-        <Card className="pami-glass border-white/10 shadow-2xl">
-          <CardHeader>
-            <CardTitle>Log in</CardTitle>
-            <CardDescription>
-              Sign in with your PAMI account.
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <form onSubmit={handleSubmit} className="flex flex-col gap-4">
-              <div className="flex flex-col gap-2">
-                <Label htmlFor="email">Email</Label>
-                <Input
-                  id="email"
-                  type="email"
-                  autoComplete="email"
-                  required
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                />
-              </div>
-              <div className="flex flex-col gap-2">
-                <Label htmlFor="password">Password</Label>
-                <Input
-                  id="password"
-                  type="password"
-                  autoComplete="current-password"
-                  required
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                />
-              </div>
-              {error && <p className="text-sm text-destructive">{error}</p>}
-              <Button type="submit" disabled={pending} className="w-full">
-                {pending ? "Logging in…" : "Log in"}
-              </Button>
-            </form>
-          </CardContent>
-        </Card>
+        <form onSubmit={handleSubmit} className="flex flex-col gap-4">
+          {/* One grouped field, as in Apple's own sign-in sheets. */}
+          <div className="overflow-hidden rounded-xl bg-card">
+            <label htmlFor="email" className="sr-only">
+              Email
+            </label>
+            <input
+              id="email"
+              type="email"
+              inputMode="email"
+              autoComplete="email"
+              autoCapitalize="off"
+              autoCorrect="off"
+              enterKeyHint="next"
+              placeholder="Email"
+              required
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              className="h-12 w-full bg-transparent px-4 text-[17px] outline-none placeholder:text-muted-foreground"
+            />
+            <div className="ml-4 h-px bg-border" />
+            <label htmlFor="password" className="sr-only">
+              Password
+            </label>
+            <input
+              id="password"
+              type="password"
+              autoComplete="current-password"
+              enterKeyHint="go"
+              placeholder="Password"
+              required
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              className="h-12 w-full bg-transparent px-4 text-[17px] outline-none placeholder:text-muted-foreground"
+            />
+          </div>
+          {error && <p className="px-4 text-center text-[15px] text-destructive">{error}</p>}
+          <button
+            type="submit"
+            disabled={pending}
+            className="pressable h-12 w-full rounded-xl bg-primary text-[17px] font-semibold text-primary-foreground disabled:opacity-50"
+          >
+            {pending ? "Signing In…" : "Sign In"}
+          </button>
+        </form>
       </div>
     </div>
   );

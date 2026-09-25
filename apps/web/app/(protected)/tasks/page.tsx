@@ -1,4 +1,5 @@
 import { createClient } from "@/lib/supabase/server";
+import { MacOfflineBanner } from "@/components/mac-offline-banner";
 import { TaskList } from "@/components/task-list";
 import { VoiceResponseSpeaker } from "@/components/voice-response-speaker";
 
@@ -17,17 +18,11 @@ export default async function TasksPage({
     data: { user },
   } = await supabase.auth.getUser();
 
-  const { data: tasks } = await supabase
-    .from("tasks")
-    .select("*")
-    .order("created_at", { ascending: false })
-    .limit(50);
-
-  const { data: profile } = await supabase
-    .from("profiles")
-    .select("voice_responses_enabled")
-    .eq("id", user!.id)
-    .single();
+  const [{ data: tasks }, { data: profile }, { data: devices }] = await Promise.all([
+    supabase.from("tasks").select("*").order("created_at", { ascending: false }).limit(50),
+    supabase.from("profiles").select("voice_responses_enabled").eq("id", user!.id).single(),
+    supabase.from("devices").select("*").order("created_at", { ascending: false }),
+  ]);
 
   return (
     <>
@@ -36,7 +31,13 @@ export default async function TasksPage({
         initialEnabled={profile?.voice_responses_enabled ?? true}
         knownTaskIds={(tasks ?? []).map((t) => t.id)}
       />
-      <TaskList userId={user!.id} initialTasks={tasks ?? []} initialText={q} autoFocus={autoFocus} />
+      <TaskList
+        userId={user!.id}
+        initialTasks={tasks ?? []}
+        initialText={q}
+        autoFocus={autoFocus}
+        banner={<MacOfflineBanner userId={user!.id} initialDevices={devices ?? []} />}
+      />
     </>
   );
 }

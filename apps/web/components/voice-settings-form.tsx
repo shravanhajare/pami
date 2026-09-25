@@ -1,9 +1,10 @@
 "use client";
 
 import { useState } from "react";
+import { Volume2 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { Switch } from "@/components/ui/switch";
-import { Label } from "@/components/ui/label";
+import { IconBadge, ListRow } from "@/components/ui/list";
 
 export function VoiceSettingsForm({
   userId,
@@ -39,22 +40,20 @@ export function VoiceSettingsForm({
   }
 
   return (
-    <div className="flex flex-col gap-2">
-      <div className="flex items-center justify-between gap-4">
-        <div>
-          <Label htmlFor="voice-responses">Speak responses aloud</Label>
-          <p className="text-sm text-muted-foreground">
-            Applies everywhere — your paired Mac and this website.
-          </p>
-        </div>
-        <Switch
-          id="voice-responses"
-          checked={enabled}
-          disabled={pending}
-          onCheckedChange={handleChange}
-        />
-      </div>
-      {error && <p className="text-sm text-destructive">{error}</p>}
-    </div>
+    <>
+      <ListRow
+        icon={<IconBadge icon={Volume2} className="bg-ios-pink" />}
+        title={<label htmlFor="voice-responses">Speak Responses</label>}
+        detail={
+          <Switch
+            id="voice-responses"
+            checked={enabled}
+            disabled={pending}
+            onCheckedChange={handleChange}
+          />
+        }
+      />
+      {error && <ListRow title={<span className="text-[15px] text-destructive">{error}</span>} />}
+    </>
   );
 }

@@ -1,10 +1,13 @@
 import Link from "next/link";
-import { ArrowRight, Sparkles } from "lucide-react";
+import { Sparkles } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
+import { AddToHomeScreen } from "@/components/add-to-home-screen";
 import { ApprovalsList } from "@/components/approvals-list";
+import { Greeting } from "@/components/greeting";
 import { MacStatus } from "@/components/mac-status";
-import { QuickActions } from "@/components/quick-actions";
+import { AppleApps, QuickActions } from "@/components/quick-actions";
 import { RecentActivity } from "@/components/recent-activity";
+import { SendToMac } from "@/components/send-to-mac";
 import { SUGGESTIONS } from "@/lib/suggestions";
 
 export default async function DashboardPage() {
@@ -13,9 +16,9 @@ export default async function DashboardPage() {
     data: { user },
   } = await supabase.auth.getUser();
 
-  // Asking happens on the Tasks tab (a conversation view); the dashboard is
-  // the at-a-glance home: Mac status, a shortcut into asking, one-tap
-  // controls, and the last few things PAMI did.
+  // Asking happens on the Tasks tab (a conversation view); Home is the
+  // at-a-glance screen: Mac status, a shortcut into asking, Control
+  // Center-style controls, and the last few things PAMI did.
   const [{ data: tasks }, { data: approvals }, { data: devices }] = await Promise.all([
     supabase.from("tasks").select("*").order("created_at", { ascending: false }).limit(4),
     supabase
@@ -28,33 +31,31 @@ export default async function DashboardPage() {
 
   return (
     <div className="flex flex-col gap-6">
-      <div className="flex flex-wrap items-end justify-between gap-3">
-        <div>
-          <h1 className="text-2xl font-semibold tracking-tight">Good {timeOfDayGreeting()}.</h1>
-          <p className="text-muted-foreground">What should your Mac do?</p>
-        </div>
+      <Greeting />
+
+      <div className="flex flex-col gap-3">
+        <ApprovalsList userId={user!.id} initialApprovals={approvals ?? []} />
         <MacStatus userId={user!.id} initialDevices={devices ?? []} />
+        <AddToHomeScreen />
       </div>
 
-      <ApprovalsList userId={user!.id} initialApprovals={approvals ?? []} />
-
       <section className="flex flex-col gap-3">
+        {/* Styled as a search field (the iOS idiom for "type here to
+            start"); it's a link so the keyboard opens on Tasks, where the
+            conversation is. */}
         <Link
           href="/tasks?ask"
-          className="pami-glass group flex items-center gap-3 rounded-2xl px-4 py-3.5 shadow-lg shadow-black/20 transition-colors hover:border-primary/40"
+          className="pressable flex h-12 items-center gap-2.5 rounded-2xl bg-card px-3.5 text-[17px] text-muted-foreground"
         >
-          <span className="pami-gradient flex size-8 shrink-0 items-center justify-center rounded-xl text-primary-foreground">
-            <Sparkles className="size-4" />
-          </span>
-          <span className="flex-1 text-muted-foreground">Tell PAMI what to do on your Mac…</span>
-          <ArrowRight className="size-4 text-muted-foreground transition-transform group-hover:translate-x-0.5" />
+          <Sparkles className="size-5 shrink-0 text-tint" />
+          <span className="flex-1 truncate">Ask PAMI to do anything…</span>
         </Link>
-        <div className="-mx-4 flex gap-2 overflow-x-auto px-4 pb-1 [scrollbar-width:none] sm:mx-0 sm:flex-wrap sm:px-0">
+        <div className="no-scrollbar -mx-4 flex snap-x gap-2 overflow-x-auto px-4 sm:mx-0 sm:flex-wrap sm:px-0">
           {SUGGESTIONS.slice(0, 4).map((s) => (
             <Link
               key={s}
               href={`/tasks?q=${encodeURIComponent(s)}`}
-              className="shrink-0 rounded-full border px-3 py-1.5 text-sm text-muted-foreground transition-colors hover:border-primary/40 hover:text-foreground"
+              className="pressable shrink-0 snap-start rounded-full bg-card px-3.5 py-2 text-[15px] text-foreground/90"
             >
               {s}
             </Link>
@@ -62,16 +63,20 @@ export default async function DashboardPage() {
         </div>
       </section>
 
-      <QuickActions userId={user!.id} />
+      <section className="flex flex-col gap-1.5">
+        <h2 className="px-4 text-[13px] tracking-wide text-muted-foreground uppercase">Controls</h2>
+        <QuickActions />
+      </section>
+
+      <section className="flex flex-col gap-1.5">
+        <h2 className="px-4 text-[13px] tracking-wide text-muted-foreground uppercase">Continuity</h2>
+        <div className="grid gap-3 md:grid-cols-2">
+          <SendToMac />
+          <AppleApps />
+        </div>
+      </section>
 
       <RecentActivity userId={user!.id} initialTasks={tasks ?? []} />
     </div>
   );
-}
-
-function timeOfDayGreeting() {
-  const hour = new Date().getHours();
-  if (hour < 12) return "morning";
-  if (hour < 18) return "afternoon";
-  return "evening";
 }

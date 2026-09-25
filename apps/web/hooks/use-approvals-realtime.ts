@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useId, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import type { Database } from "@/lib/supabase/database.types";
 
@@ -9,16 +9,25 @@ type Approval = Database["public"]["Tables"]["approvals"]["Row"] & {
 };
 
 export function useApprovalsRealtime(userId: string, initial: Approval[]) {
+  // Unique per mounted hook: realtime-js hands back the *same* channel for
+  // a repeated topic, so two components on one page would otherwise share
+  // (and tear down) each other's subscription.
+  const channelId = useId();
   const [approvals, setApprovals] = useState<Approval[]>(initial);
 
-  useEffect(() => {
+  // Re-seed when the server sends fresh rows (navigation, router.refresh()
+  // on resume) — adjusted during render rather than in an effect, so there's
+  // no extra render showing the stale list first.
+  const [seed, setSeed] = useState(initial);
+  if (initial !== seed) {
+    setSeed(initial);
     setApprovals(initial);
-  }, [initial]);
+  }
 
   useEffect(() => {
     const supabase = createClient();
     const channel = supabase
-      .channel("approvals-changes")
+      .channel(`approvals-changes-${channelId}`)
       .on(
         "postgres_changes",
         {
@@ -48,7 +57,7 @@ export function useApprovalsRealtime(userId: string, initial: Approval[]) {
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [userId]);
+  }, [userId, channelId]);
 
   return approvals;
 }

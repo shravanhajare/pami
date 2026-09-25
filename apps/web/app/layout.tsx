@@ -1,16 +1,5 @@
 import type { Metadata, Viewport } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
-
-const geistSans = Geist({
-  variable: "--font-geist-sans",
-  subsets: ["latin"],
-});
-
-const geistMono = Geist_Mono({
-  variable: "--font-geist-mono",
-  subsets: ["latin"],
-});
 
 export const metadata: Metadata = {
   title: "PAMI",
@@ -20,13 +9,21 @@ export const metadata: Metadata = {
     statusBarStyle: "black-translucent",
     title: "PAMI",
   },
+  // Task results are full of numbers ("82%", "3:30", disk sizes) that iOS
+  // would otherwise underline as tappable phone numbers.
+  formatDetection: {
+    telephone: false,
+    address: false,
+    email: false,
+  },
   icons: {
     apple: "/apple-touch-icon.png",
   },
 };
 
 export const viewport: Viewport = {
-  themeColor: "#0a0a0a",
+  themeColor: "#000000",
+  colorScheme: "dark",
   // Lets env(safe-area-inset-*) resolve to real values instead of 0 — needed
   // for the bottom tab bar/header to clear the iPhone notch and home
   // indicator when this is added to the Home Screen as a standalone PWA
@@ -34,14 +31,14 @@ export const viewport: Viewport = {
   viewportFit: "cover",
 };
 
+// The app is dark-only on purpose: the Home Screen web app uses the
+// black-translucent status bar (white clock/battery drawn over the page),
+// which would be unreadable over a light background.
 export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
-    <html
-      lang="en"
-      className={`dark ${geistSans.variable} ${geistMono.variable} h-full antialiased`}
-    >
+    <html lang="en" className="dark h-full antialiased">
       <body className="min-h-full flex flex-col bg-background text-foreground">
-        <div className="pointer-events-none fixed inset-0 -z-10 bg-[radial-gradient(ellipse_80%_60%_at_50%_-10%,color-mix(in_oklch,var(--pami-purple)_18%,transparent),transparent)]" />
+        <div className="pointer-events-none fixed inset-x-0 top-0 -z-10 h-96 bg-[radial-gradient(ellipse_70%_60%_at_50%_-20%,color-mix(in_oklch,var(--pami-purple)_14%,transparent),transparent)]" />
         {children}
       </body>
     </html>

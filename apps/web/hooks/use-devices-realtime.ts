@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useId, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import type { Database } from "@/lib/supabase/database.types";
 
@@ -25,18 +25,27 @@ function withOnline(device: Device): DeviceWithOnline {
 // Realtime only fires on row *changes* — a dead Mac agent produces no new
 // events, so without this timer a crashed agent would look "online" forever.
 export function useDevicesRealtime(userId: string, initial: Device[]) {
+  // Unique per mounted hook: realtime-js hands back the *same* channel for
+  // a repeated topic, so two components on one page would otherwise share
+  // (and tear down) each other's subscription.
+  const channelId = useId();
   const [devices, setDevices] = useState<DeviceWithOnline[]>(
     initial.map(withOnline),
   );
 
-  useEffect(() => {
+  // Re-seed when the server sends fresh rows (navigation, router.refresh()
+  // on resume) — adjusted during render rather than in an effect, so there's
+  // no extra render showing the stale list first.
+  const [seed, setSeed] = useState(initial);
+  if (initial !== seed) {
+    setSeed(initial);
     setDevices(initial.map(withOnline));
-  }, [initial]);
+  }
 
   useEffect(() => {
     const supabase = createClient();
     const channel = supabase
-      .channel("devices-changes")
+      .channel(`devices-changes-${channelId}`)
       .on(
         "postgres_changes",
         {
@@ -64,7 +73,7 @@ export function useDevicesRealtime(userId: string, initial: Device[]) {
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [userId]);
+  }, [userId, channelId]);
 
   useEffect(() => {
     const interval = setInterval(() => {

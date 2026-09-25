@@ -1,10 +1,10 @@
 "use client";
 
 import { useState } from "react";
+import { CircleCheck } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
+import { haptic } from "@/lib/haptics";
+import { ListSection } from "@/components/ui/list";
 
 export function PairDeviceForm() {
   const [code, setCode] = useState("");
@@ -28,29 +28,47 @@ export function PairDeviceForm() {
       setError(error.message);
       return;
     }
+    haptic();
     setSuccess(true);
     setCode("");
   }
 
   return (
-    <form onSubmit={handleSubmit} className="flex flex-col gap-3 sm:flex-row sm:items-end sm:gap-2">
-      <div className="flex flex-1 flex-col gap-2">
-        <Label htmlFor="pairing-code">Pairing code from your Mac</Label>
-        <Input
+    <ListSection
+      title="Pair a New Mac"
+      footer="Open the PAMI menu bar app on your Mac — it shows a code like ABC-123."
+    >
+      <form onSubmit={handleSubmit} className="flex flex-col gap-3 p-4">
+        <label htmlFor="pairing-code" className="sr-only">
+          Pairing code from your Mac
+        </label>
+        <input
           id="pairing-code"
           placeholder="ABC-123"
           value={code}
           onChange={(e) => setCode(e.target.value.toUpperCase())}
           required
+          autoComplete="one-time-code"
+          autoCapitalize="characters"
+          autoCorrect="off"
+          spellCheck={false}
+          enterKeyHint="go"
+          className="h-14 w-full rounded-xl bg-card-2 text-center font-mono text-[28px] font-semibold tracking-[0.2em] outline-none placeholder:text-label-3 focus:ring-2 focus:ring-ring/40"
         />
-      </div>
-      <Button type="submit" disabled={pending || !code} className="sm:w-auto">
-        {pending ? "Pairing…" : "Add this Mac"}
-      </Button>
-      {error && <p className="text-sm text-destructive">{error}</p>}
-      {success && (
-        <p className="text-sm text-muted-foreground">Mac paired.</p>
-      )}
-    </form>
+        <button
+          type="submit"
+          disabled={pending || !code}
+          className="pressable h-12 rounded-xl bg-primary text-[17px] font-semibold text-primary-foreground disabled:bg-fill disabled:text-muted-foreground"
+        >
+          {pending ? "Pairing…" : "Pair Mac"}
+        </button>
+        {error && <p className="text-center text-[15px] text-destructive">{error}</p>}
+        {success && (
+          <p className="flex items-center justify-center gap-1.5 text-[15px] font-medium text-ios-green">
+            <CircleCheck className="size-4.5" /> Mac paired
+          </p>
+        )}
+      </form>
+    </ListSection>
   );
 }

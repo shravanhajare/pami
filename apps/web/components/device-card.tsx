@@ -1,17 +1,20 @@
 "use client";
 
 import { useState } from "react";
+import { Laptop } from "lucide-react";
+import { cn } from "cn";
 import { createClient } from "@/lib/supabase/client";
-import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { ListButtonRow, ListRow, ListSection } from "@/components/ui/list";
+import { useHydrated } from "@/hooks/use-hydrated";
 import type { DeviceWithOnline } from "@/hooks/use-devices-realtime";
+import { formatRelativeTime } from "@/lib/format-task";
 
 export function DeviceCard({ device }: { device: DeviceWithOnline }) {
   const [revoking, setRevoking] = useState(false);
+  const hydrated = useHydrated();
 
   async function handleRevoke() {
-    if (!confirm(`Revoke access for "${device.name}"?`)) return;
+    if (!confirm(`Revoke access for "${device.name}"? It will need to be paired again.`)) return;
     setRevoking(true);
     const supabase = createClient();
     // Permitted by the narrow RLS policy: users may only move status to
@@ -23,43 +26,71 @@ export function DeviceCard({ device }: { device: DeviceWithOnline }) {
     setRevoking(false);
   }
 
+  const paused = device.isOnline && device.state === "paused";
   const statusLabel =
     device.status === "revoked"
       ? "Revoked"
-      : device.isOnline
-        ? "Online"
-        : "Offline";
+      : paused
+        ? "Paused"
+        : device.isOnline
+          ? "Online"
+          : "Offline";
+  const statusColor =
+    device.status === "revoked"
+      ? "text-destructive"
+      : paused
+        ? "text-ios-orange"
+        : device.isOnline
+          ? "text-ios-green"
+          : "text-muted-foreground";
 
   return (
-    <Card>
-      <CardHeader className="flex flex-row items-center justify-between gap-4">
-        <CardTitle className="text-base">{device.name}</CardTitle>
-        <Badge variant={device.isOnline ? "default" : "secondary"}>
-          {statusLabel}
-        </Badge>
-      </CardHeader>
-      <CardContent className="flex flex-col gap-2 text-sm text-muted-foreground">
-        <p>Platform: {device.platform}</p>
-        {device.os_version && <p>macOS: {device.os_version}</p>}
-        {device.agent_version && <p>Agent version: {device.agent_version}</p>}
-        <p>
-          Last seen:{" "}
-          {device.last_seen_at
-            ? new Date(device.last_seen_at).toLocaleString()
-            : "never"}
-        </p>
-        {device.status !== "revoked" && (
-          <Button
-            variant="destructive"
-            size="sm"
-            className="mt-2 w-fit"
-            onClick={handleRevoke}
-            disabled={revoking}
-          >
-            {revoking ? "Revoking…" : "Revoke"}
-          </Button>
-        )}
-      </CardContent>
-    </Card>
+    <ListSection>
+      <div className="flex items-center gap-3.5 px-4 py-3.5">
+        <span
+          className={cn(
+            "flex size-14 shrink-0 items-center justify-center rounded-[14px] bg-gradient-to-b from-[#8e8e93] to-[#48484a] text-white",
+            device.isOnline && !paused && "from-ios-blue to-ios-indigo",
+          )}
+        >
+          <Laptop className="size-7" />
+        </span>
+        <div className="min-w-0 flex-1">
+          <p className="truncate text-[20px] leading-tight font-semibold">{device.name}</p>
+          <p className={cn("mt-0.5 flex items-center gap-1.5 text-[15px] font-medium", statusColor)}>
+            <span className={cn("size-2 rounded-full bg-current", device.isOnline && !paused && "animate-pulse")} />
+            {statusLabel}
+          </p>
+        </div>
+      </div>
+      {device.os_version && <ListRow title="macOS" detail={device.os_version} />}
+      {device.agent_version && <ListRow title="PAMI Agent" detail={device.agent_version} />}
+      <ListRow
+        title="Last Seen"
+        detail={
+          !device.last_seen_at
+            ? "Never"
+            : device.isOnline
+              ? "Now"
+              : hydrated
+                ? formatRelativeTime(device.last_seen_at)
+                : ""
+        }
+      />
+      {device.paired_at && (
+        <ListRow
+          title="Paired"
+          detail={hydrated ? new Date(device.paired_at).toLocaleDateString(undefined, { dateStyle: "medium" }) : ""}
+        />
+      )}
+      {device.status !== "revoked" && (
+        <ListButtonRow
+          destructive
+          title={revoking ? "Revoking…" : "Revoke Access"}
+          onClick={handleRevoke}
+          disabled={revoking}
+        />
+      )}
+    </ListSection>
   );
 }

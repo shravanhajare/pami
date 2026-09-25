@@ -1,7 +1,7 @@
 import { createClient } from "@/lib/supabase/server";
+import { PageHeader } from "@/components/page-header";
 import { PairDeviceForm } from "@/components/pair-device-form";
 import { DeviceList } from "@/components/device-list";
-import { Separator } from "@/components/ui/separator";
 
 export default async function MacPage() {
   const supabase = await createClient();
@@ -15,19 +15,12 @@ export default async function MacPage() {
     .order("created_at", { ascending: false });
 
   return (
-    <div className="flex flex-col gap-8">
-      <div>
-        <h1 className="text-2xl font-semibold tracking-tight">Mac</h1>
-        <p className="text-muted-foreground">
-          Manage the Macs paired with your PAMI account.
-        </p>
-      </div>
-
-      <PairDeviceForm />
-
-      <Separator />
+    <div className="flex flex-col gap-7">
+      <PageHeader title="Mac" subtitle="The Macs paired with your PAMI account." />
 
       <DeviceList userId={user!.id} initialDevices={devices ?? []} />
+
+      <PairDeviceForm />
     </div>
   );
 }

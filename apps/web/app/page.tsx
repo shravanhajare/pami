@@ -9,13 +9,13 @@ export default async function Home() {
   } = await supabase.auth.getUser();
 
   return (
-    <div className="flex flex-1 flex-col items-center justify-center gap-6 px-6 text-center">
-      <div className="pami-gradient flex size-16 items-center justify-center rounded-2xl shadow-lg shadow-purple-500/20">
-        <span className="text-2xl font-semibold text-white">P</span>
+    <div className="flex flex-1 flex-col items-center justify-center gap-7 px-6 text-center">
+      <div className="pami-gradient flex size-24 items-center justify-center rounded-[26px] shadow-xl shadow-black/50">
+        <span className="text-[40px] font-bold text-black">P</span>
       </div>
       <div className="flex flex-col gap-2">
-        <h1 className="text-4xl font-semibold tracking-tight">PAMI</h1>
-        <p className="max-w-md text-muted-foreground">
+        <h1 className="text-[34px] leading-tight font-bold tracking-tight">PAMI</h1>
+        <p className="max-w-xs text-[17px] text-muted-foreground">
           Your personal AI agent. Always on your Mac, activated when you need
           it.
         </p>
@@ -25,9 +25,11 @@ export default async function Home() {
           with the same variant classes instead. */}
       <Link
         href={user ? "/dashboard" : "/login"}
-        className={buttonVariants({ size: "lg" })}
+        className={buttonVariants({
+          className: "pressable h-12 w-full max-w-xs rounded-xl text-[17px] font-semibold",
+        })}
       >
-        {user ? "Open Dashboard" : "Log in"}
+        {user ? "Open PAMI" : "Sign In"}
       </Link>
     </div>
   );
